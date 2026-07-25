@@ -1,9 +1,12 @@
 import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { parse } from "csv-parse/sync";
 import sqlite3 from "sqlite3";
 
 const CSV_PATH = "directory.csv";
 const DB_PATH = "directory.db";
+const SCHEMA_PATH = path.join(path.dirname(fileURLToPath(import.meta.url)), "directory.schema");
 const TABLE_NAME = "orgs";
 const HEADER_ROW_INDEX = 1;
 const SKIP_ROWS = new Set([2]);
@@ -26,6 +29,53 @@ function run(db, sql, params = []) {
       resolve();
     });
   });
+}
+
+function all(db, sql) {
+  return new Promise((resolve, reject) => {
+    db.all(sql, (err, rows) => {
+      if (err) {
+        reject(err);
+        return;
+      }
+      resolve(rows);
+    });
+  });
+}
+
+function close(db) {
+  return new Promise((resolve, reject) => {
+    db.close((err) => {
+      if (err) {
+        reject(err);
+        return;
+      }
+      resolve();
+    });
+  });
+}
+
+async function getDatabaseSchema(db) {
+  const tables = await all(db, "SELECT name FROM sqlite_master WHERE type='table';");
+  const schemaLines = [];
+
+  for (const table of tables) {
+    const tableName = table.name;
+    schemaLines.push(`Table name: ${tableName}`);
+    schemaLines.push("Columns:");
+
+    const safeTableName = tableName.replace(/'/g, "''");
+    const columns = await all(db, `PRAGMA table_info('${safeTableName}');`);
+
+    for (const col of columns) {
+      const colType = col.type || "TEXT";
+      schemaLines.push(`  - ${col.name} (${colType})`);
+    }
+
+    schemaLines.push("");
+  }
+
+  return schemaLines.join("\n");
 }
 
 /**
@@ -102,16 +152,11 @@ async function main() {
       });
       await run(db, insertSql, normalizedRow);
     }
+
+    const extractedSchema = await getDatabaseSchema(db);
+    fs.writeFileSync(SCHEMA_PATH, extractedSchema, "utf8");
   } finally {
-    await new Promise((resolve, reject) => {
-      db.close((err) => {
-        if (err) {
-          reject(err);
-          return;
-        }
-        resolve();
-      });
-    });
+    await close(db);
   }
 }
 

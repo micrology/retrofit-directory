@@ -1,0 +1,82 @@
+Table name: orgs
+Columns:
+  - start_date (TEXT)
+  - end_date (TEXT)
+  - response_type (TEXT)
+  - ip_address (TEXT)
+  - progress (INTEGER)
+  - duration_(in_seconds) (INTEGER)
+  - finished (TEXT)
+  - recorded_date (TEXT)
+  - response_id (TEXT)
+  - recipient_last_name (TEXT)
+  - recipient_first_name (TEXT)
+  - recipient_email (TEXT)
+  - external_data_reference (TEXT)
+  - location_latitude (REAL)
+  - location_longitude (REAL)
+  - distribution_channel (TEXT)
+  - user_language (TEXT)
+  - what_is_the_name_of_the_organisation_you_wish_to_add_to_the_directory? (TEXT)
+  - for_large_organisations_whose_remit_spans_beyond_retrofit,_please_consider_submitting_a_specific_department_or_unit_to_the_directory._
+
+please_enter_the_department_or_unit_name_here,_if_relevant._otherwise,_please_leave_blank. (TEXT)
+  - what_is_the_organisation's_main_type?_
+
+(if_none_of_these_options_fit_well,_please_select_'other'_and_specify)_-_selected_choice (TEXT)
+  - what_is_the_organisation's_main_type?_
+
+(if_none_of_these_options_fit_well,_please_select_'other'_and_specify)_-_other_public_body_(please_specify_type)_-_text (TEXT)
+  - what_is_the_organisation's_main_type?_
+
+(if_none_of_these_options_fit_well,_please_select_'other'_and_specify)_-_other_private_company_(please_specify_type)_-_text (TEXT)
+  - what_is_the_organisation's_main_type?_
+
+(if_none_of_these_options_fit_well,_please_select_'other'_and_specify)_-_other_non-profit_(please_specify_type)_-_text (TEXT)
+  - what_geographic_scope_does_the_organisation_cover?_(please_choose_the_most_relevant_one) (TEXT)
+  - list_of_countries (TEXT)
+  - for_uk-based_organisations,_in_which_county_is_it_based? (TEXT)
+  - in_which_geographic_areas_is_the_organisation_currently_operating?_(select_all_that_apply)_-_selected_choice (TEXT)
+  - in_which_geographic_areas_is_the_organisation_currently_operating?_(select_all_that_apply)_-_other_(please_specify)_-_text (TEXT)
+  - what_is_the_main_mission_or_remit_of_the_organisation? (TEXT)
+  - how_is_the_organisation’s_work_relevant_to_retrofit? (TEXT)
+  - in_terms_of_retrofit,_what_is_the_organisation's_primary_activity?_(please_select_one._more_detail_can_be_provided_when_answering_the_following_questions.)_-_selected_choice (TEXT)
+  - in_terms_of_retrofit,_what_is_the_organisation's_primary_activity?_(please_select_one._more_detail_can_be_provided_when_answering_the_following_questions.)_-_none_of_the_above_/_other_(please_specify)_-_text (TEXT)
+  - in_terms_of_retrofit,_what_other_activities_does_the_organisation_carry_out?_(select_all_that_apply)_-_selected_choice (TEXT)
+  - in_terms_of_retrofit,_what_other_activities_does_the_organisation_carry_out?_(select_all_that_apply)_-_none_of_the_above_/_other_(please_specify)_-_text (TEXT)
+  - in_terms_of_retrofit,_what_are_the_organisation's_areas_of_specialism?_(select_all_that_apply)_-_selected_choice (TEXT)
+  - in_terms_of_retrofit,_what_are_the_organisation's_areas_of_specialism?_(select_all_that_apply)_-_none_of_the_above_/_other_(please_specify)_-_text (TEXT)
+  - in_terms_of_retrofit,_what_methods_or_technical_skills_does_the_organisation_use?_(select_all_that_apply)_-_selected_choice (TEXT)
+  - in_terms_of_retrofit,_what_methods_or_technical_skills_does_the_organisation_use?_(select_all_that_apply)_-_none_of_the_above_/_other_(please_specify)_-_text (TEXT)
+  - in_terms_of_retrofit,_who_does_the_organisation_work_with,_directly_or_indirectly?_(select_all_that_apply)_-_people_experiencing_fuel_poverty (TEXT)
+  - in_terms_of_retrofit,_who_does_the_organisation_work_with,_directly_or_indirectly?_(select_all_that_apply)_-_people_with_health_conditions_affected_by_housing (TEXT)
+  - in_terms_of_retrofit,_who_does_the_organisation_work_with,_directly_or_indirectly?_(select_all_that_apply)_-_other_groups_experiencing_inequalities_or_vulnerabilities (TEXT)
+  - in_terms_of_retrofit,_who_does_the_organisation_work_with,_directly_or_indirectly?_(select_all_that_apply)_-_tenants'_or_residents'_associations (TEXT)
+  - in_terms_of_retrofit,_who_does_the_organisation_work_with,_directly_or_indirectly?_(select_all_that_apply)_-_community_groups_or_organisations (TEXT)
+  - in_terms_of_retrofit,_who_does_the_organisation_work_with,_directly_or_indirectly?_(select_all_that_apply)_-_general_public (TEXT)
+  - in_terms_of_retrofit,_who_does_the_organisation_work_with,_directly_or_indirectly?_(select_all_that_apply)_-_local_or_combined_authority_officers_or_councillors (TEXT)
+  - in_terms_of_retrofit,_who_does_the_organisation_work_with,_directly_or_indirectly?_(select_all_that_apply)_-_central_government_officials_or_agencies (TEXT)
+  - in_terms_of_retrofit,_who_does_the_organisation_work_with,_directly_or_indirectly?_(select_all_that_apply)_-_regulators_or_standards_bodies_or_professionals (TEXT)
+  - in_terms_of_retrofit,_who_does_the_organisation_work_with,_directly_or_indirectly?_(select_all_that_apply)_-_funders,_investors_or_grant-makers (TEXT)
+  - in_terms_of_retrofit,_who_does_the_organisation_work_with,_directly_or_indirectly?_(select_all_that_apply)_-_social_housing_providers (TEXT)
+  - in_terms_of_retrofit,_who_does_the_organisation_work_with,_directly_or_indirectly?_(select_all_that_apply)_-_housing_associations_or_other_non-profit_providers (TEXT)
+  - in_terms_of_retrofit,_who_does_the_organisation_work_with,_directly_or_indirectly?_(select_all_that_apply)_-_private_housing_providers_/_landlords_/_letting_agents (TEXT)
+  - in_terms_of_retrofit,_who_does_the_organisation_work_with,_directly_or_indirectly?_(select_all_that_apply)_-_developers_/_builders_/_contractors_/_installers (TEXT)
+  - in_terms_of_retrofit,_who_does_the_organisation_work_with,_directly_or_indirectly?_(select_all_that_apply)_-_product_developers_/_manufacturers_/_suppliers (TEXT)
+  - in_terms_of_retrofit,_who_does_the_organisation_work_with,_directly_or_indirectly?_(select_all_that_apply)_-_architects_/_engineers_/_other_design_professionals (TEXT)
+  - in_terms_of_retrofit,_who_does_the_organisation_work_with,_directly_or_indirectly?_(select_all_that_apply)_-_building_/_facilities_managers (TEXT)
+  - in_terms_of_retrofit,_who_does_the_organisation_work_with,_directly_or_indirectly?_(select_all_that_apply)_-_researchers (TEXT)
+  - in_terms_of_retrofit,_who_does_the_organisation_work_with,_directly_or_indirectly?_(select_all_that_apply)_-_network_convenors (TEXT)
+  - in_terms_of_retrofit,_who_does_the_organisation_work_with,_directly_or_indirectly?_(select_all_that_apply)_-_consultants_or_advisors (TEXT)
+  - in_terms_of_retrofit,_who_does_the_organisation_work_with,_directly_or_indirectly?_(select_all_that_apply)_-_other_groups_or_audiences_(please_specify) (TEXT)
+  - in_terms_of_retrofit,_who_does_the_organisation_work_with,_directly_or_indirectly?_(select_all_that_apply)_-_other_groups_or_audiences_(please_specify)_-_text (TEXT)
+  - has_the_organisation_managed_the_delivery_of_local_initiatives_funded_through_any_of_the_following_schemes?_(select_all_that_apply)_-_selected_choice (TEXT)
+  - has_the_organisation_managed_the_delivery_of_local_initiatives_funded_through_any_of_the_following_schemes?_(select_all_that_apply)_-_local_authority_finance_fund_(please_specify)_-_text (TEXT)
+  - has_the_organisation_managed_the_delivery_of_local_initiatives_funded_through_any_of_the_following_schemes?_(select_all_that_apply)_-_other_(please_specfy)_-_text (TEXT)
+  - please_add_a_link_to_the_organisation’s_website_or_web_page._if_it_does_not_have_a_website_or_page,_please_leave_blank. (TEXT)
+  - please_provide_a_general_contact_email_for_the_organisation_(e.g._‘info@...’).
+
+
+
+please_do_not_provide_a_personal_email_address._if_the_organisation_does_not_have_a_general_email_address,_please_leave_blank. (TEXT)
+  - approximately_how_many_employees_does_the_organisation_have? (TEXT)
