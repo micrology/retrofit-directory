@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>The Retrofit Directory | Coming Soon</title>
+    <style>
+        :root {
+            --primary: #1a4731; 
+            --accent: #2e8b57;  
+            --light: #f4f7f4;
+            --white: #ffffff;
+        }
+
+        * { box-sizing: border-box; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+            line-height: 1.7;
+            color: #2d3436;
+            margin: 0;
+            background-color: var(--light);
+        }
+
+        /* Hero Image Section - Fixed URL */
+        .hero {
+            width: 100%;
+            height: 45vh;
+            background: linear-gradient(rgba(26, 71, 49, 0.7), rgba(26, 71, 49, 0.3)), 
+                        url('https://retrofit-directory.org.uk/assets/pete-f-ievmhjw1Gy0-unsplash.jpg?auto=format&fit=crop&q=80&w=1200');
+            background-size: cover;
+            background-position: center;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            color: var(--white);
+        }
+
+        .hero-text h1 {
+            font-size: clamp(2rem, 5vw, 3.5rem);
+            margin: 0;
+            letter-spacing: -1px;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: -60px auto 60px;
+            background: var(--white);
+            padding: 40px;
+            border-radius: 12px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            position: relative;
+        }
+
+        .badge {
+            display: inline-block;
+            background: #f4b400; /* Warm Amber */
+            color: #000;
+            padding: 4px 12px;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            font-weight: bold;
+            margin-bottom: 25px;
+            text-transform: uppercase;
+        }
+
+        .content p {
+            margin-bottom: 20px;
+            font-size: 1.1rem;
+            color: #3d4446;
+        }
+
+        .cta-section {
+            border-top: 1px solid #eee;
+            margin-top: 40px;
+            padding-top: 40px;
+            text-align: center;
+        }
+
+        .btn {
+            display: inline-block;
+            background: var(--primary);
+            color: white;
+            padding: 18px 36px;
+            text-decoration: none;
+            border-radius: 8px;
+            font-weight: bold;
+            transition: all 0.2s ease;
+        }
+
+        .btn:hover {
+            background: var(--accent);
+            transform: translateY(-2px);
+        }
+
+        footer {
+            text-align: center;
+            padding: 0 20px 40px;
+            font-size: 0.9rem;
+            color: #95a5a6;
+        }
+    </style>
+</head>
+<body>
+
+    <header class="hero">
+        <div class="hero-text">
+            <h1>The Retrofit Directory</h1>
+        </div>
+    </header>
+
+    <main class="container">
+        <span class="badge">Directory in Development</span>
+        
+        <div class="content">
+            <p>Decarbonising the UK's housing stock is widely accepted to be a major priority to meet national emissions-reduction targets. The retrofit system is also highly complex, and interacts with numerous other policy and life domains.</p>
+            
+            <p>Understanding these interactions and driving forwards retrofit in a way that will maximise benefits for people and planet requires the input and expertise of a wide range of organisations. 
+
+            <p>We are collecting information about organisations that are involved with the UK's retrofit system. We are interested in any organisation that has a stake in how retrofit is done, in the broadest sense—from product designers, housing providers and policy strategists, to researchers, health professionals and community activists.</p>
+
+            <p>The Retrofit Directory will be made publicly available and searchable, supporting organisations to identify one another, connect and collaborate.</p>
+        </div>
+
+        <div class="cta-section">
+            <p><a href="https://surreyfbel.qualtrics.com/jfe/form/SV_4OVUcAI9I1742N0" class="btn" target="_blank">Submit an organisation to the Directory</a></p>
+            <p><a href="mailto:info@retrofit-directory.org.uk?subject=Please%20tell%20me%20more%20about%20the%20Retrofit%20Directory">Contact us</a></p>
+        </div>
+    </main>
+
+    <footer>
+	    &copy; 2026 The <a href="https://www.inhabithub.org.uk/" target="_blank">INHABIT</a> Hub
+    </footer>
+
+</body>
+</html>
