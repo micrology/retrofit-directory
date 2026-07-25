@@ -2,12 +2,38 @@ import sqlite3 from "sqlite3";
 import { BedrockRuntimeClient, InvokeModelCommand } from "@aws-sdk/client-bedrock-runtime";
 import { createInterface } from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
+import express from 'express'
+import cors from 'cors'
+import { createHttpTerminator } from 'http-terminator'
 
 const DB_PATH = "directory.db";
 const BEDROCK_REGION = "eu-west-2";
 const BEDROCK_MODEL_ID = "eu.anthropic.claude-haiku-4-5-20251001-v1:0";
+const CHEAP_MODEL_ID = "qwen.qwen3-235b-a22b-2507-v1:0";
+
+process.title = 'retrofit-query-server'
 
 const bedrock = new BedrockRuntimeClient({ region: BEDROCK_REGION });
+
+const app = express()
+const PORT = process.env.PORT || 5001
+
+app.set('trust proxy', 1) // trust first proxy, if behind a proxy
+app.use(cors({ origin: ['https://www.retrofit-directory.org.uk/', 'http://localhost', 'http://127.0.0.1'] }))
+app.use(express.json())
+
+let server // server instance
+let httpTerminator // terminator instance
+async function start() {
+  // Start the server
+  server = app.listen(PORT, () => {
+    console.log(
+      `Proxy server running on http://localhost:${PORT}, usingmodels ${BEDROCK_MODEL_ID} and ${CHEAP_MODEL_ID} in ${BEDROCK_REGION} region`,
+    )
+  })
+  httpTerminator = createHttpTerminator({ server })
+}
+start()
 
 function openDatabase(dbPath) {
   return new Promise((resolve, reject) => {
@@ -114,7 +140,7 @@ export async function getDatabaseSchema(dbPath, sampleValues = 3) {
         const populatedRow = await get(
           db,
           `SELECT COUNT(*) AS count FROM ${quotedTableName} ` +
-            `WHERE ${quotedColumnName} IS NOT NULL AND TRIM(CAST(${quotedColumnName} AS TEXT)) != '';`
+          `WHERE ${quotedColumnName} IS NOT NULL AND TRIM(CAST(${quotedColumnName} AS TEXT)) != '';`
         );
         const populated = populatedRow.count;
 
@@ -126,8 +152,8 @@ export async function getDatabaseSchema(dbPath, sampleValues = 3) {
         const samples = await all(
           db,
           `SELECT DISTINCT ${quotedColumnName} AS value FROM ${quotedTableName} ` +
-            `WHERE ${quotedColumnName} IS NOT NULL AND TRIM(CAST(${quotedColumnName} AS TEXT)) != '' ` +
-            `LIMIT ${sampleValues};`
+          `WHERE ${quotedColumnName} IS NOT NULL AND TRIM(CAST(${quotedColumnName} AS TEXT)) != '' ` +
+          `LIMIT ${sampleValues};`
         );
 
         const sampleValuesText = samples
@@ -206,23 +232,20 @@ export async function generateNaturalLanguageAnswer(userQuery, sqlQuery, rawResu
   return invokeBedrock(prompt, 0.3);
 }
 
-async function main() {
-  console.log("Enter your natural language query:");
-  const rl = createInterface({ input, output });
-  const userInput = await rl.question("");
-  rl.close();
+app.post('/api/query', async (req, res) => {
+  try {
+    const userQuery = req.body.query;
+    if (!userQuery) {
+      return res.status(400).json({ error: "Missing 'query' in request body" });
+    }
 
-  const sql = await generateSqlFromQuery(userInput);
-  console.log(`Generated SQL: ${sql}`);
+    const sqlQuery = await generateSqlFromQuery(userQuery);
+    const rawResults = await queryDatabase(sqlQuery);
+    const answer = await generateNaturalLanguageAnswer(userQuery, sqlQuery, rawResults);
 
-  const rawResults = await queryDatabase(sql);
-  console.log(`Raw Results: ${JSON.stringify(rawResults)}`);
-
-  const answer = await generateNaturalLanguageAnswer(userInput, sql, rawResults);
-  console.log(`Natural Language Answer: ${answer}`);
-}
-
-main().catch((error) => {
-  console.error(error);
-  process.exitCode = 1;
+    res.json({ sqlQuery, rawResults, answer });
+  } catch (error) {
+    console.error('Error processing query:', error);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
 });

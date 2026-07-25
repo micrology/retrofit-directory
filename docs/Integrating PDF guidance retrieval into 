@@ -1,0 +1,47 @@
+Integrating PDF guidance retrieval into your existing EC2/SQLite architecture without adopting expensive managed vector stores is entirely straightforward. This design pattern is called Hybrid RAG (Structured + Unstructured).
+1. Where to Store the PDFs
+• The Source Files: Store the raw PDF documents in an AWS S3 bucket. This acts as your durable, central file repository.
+• The Search Index: Instead of running a heavy cloud vector database, you can build a lightweight, local vector index directly on your EC2 instance using an embedded Python library like ChromaDB, FAISS, or SQLite-vss (an extension for SQLite).
+Because your document corpus for retrofit guidelines is likely small-to-moderate, a local vector store runs entirely in-memory or as a local file on your EC2 instance for zero extra monthly infrastructure cost.
+2. How to Integrate It into Your Python Architecture
+You can expand your existing FastAPI/Python backend to handle both data types using a unified workflow.
+Step-by-Step Data Processing Pipeline (Run on EC2)
+1. Ingest & Chunk: Write a Python script that pulls the PDFs from S3, extracts the text (using libraries like pypdf or pymupdf), and splits them into logical paragraphs or "chunks" (e.g., 500 characters each).
+2. Embed: Use AWS Bedrock’s embedding model (e.g., Amazon Titan Text Embeddings) via boto3 to convert each text chunk into a vector.
+3. Store Locally: Save these vectors and text chunks into a local vector directory on your EC2 instance using ChromaDB.
+import boto3
+import chromadb
+from pypdf import PdfReader
+
+# Initialize local ChromaDB on EC2
+chroma_client = chromadb.PersistentClient(path="./local_vector_db")
+collection = chroma_client.get_or_create_collection(name="retrofit_docs")
+
+# Bedrock client for embeddings
+bedrock = boto3.client(service_name="bedrock-runtime", region_name="eu-west-2")
+
+
+def get_embedding(text):
+  response = bedrock.invoke_model(
+      modelId="amazon.titan-embed-text-v2:0",
+      body=json.dumps({"inputText": text}),
+  )
+  return json.loads(response["body"].read())["embedding"]
+
+3. Handling User Queries (The Unified Router Pattern)
+When a user submits a question through your public interface, your Python application needs to decide whether the query requires structured database lookup (organisations, locations, counts) or unstructured document retrieval (regulations, advice, technical rules).
+You can use a fast, inexpensive model like Claude Haiku as a Query Router:
+def route_query(user_query):
+  # Ask the LLM to classify intent
+  prompt = f"""Classify this query into one of two categories: 'database' (for questions about finding organisations, installers, counts, locations) or 'documents' (for questions about regulations, heat pump rules, damp, technical guidance).
+    
+    Query: "{user_query}"
+    Output only the category name: 'database' or 'documents'."""
+
+  # Call Bedrock Haiku to get routing decision
+  # ... (send prompt and capture classification result)
+  return classification
+
+Execution Flow:
+• If classified as database: Your app writes/executes the SQLite query we built previously and returns matching organisations.
+• If classified as documents: Your app embeds the user's question, searches your local ChromaDB vector store for the top 3 relevant PDF chunks, and passes those chunks alongside the question to Claude to synthesize a clear, sourced answer (e.g., "According to the planning portal guidelines, a heat pump must be...").
