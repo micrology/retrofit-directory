@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Join The Retrofit Directory - Submit your organisation to connect with UK housing decarbonisation partners.">
+  <title>Join | The Retrofit Directory</title>
+  <link rel="stylesheet" href="assets/oat.min.css">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+  <!-- Navigation Header -->
+  <header class="site-header">
+    <div class="nav-container">
+      <a href="index.html" class="brand-logo">
+        <svg xmlns="http://www.w3.org/2000/svg" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+          <polyline points="9 22 9 12 15 12 15 22"/>
+        </svg>
+        The Retrofit Directory
+      </a>
+      <button class="mobile-nav-toggle" id="mobileNavToggle" aria-label="Toggle Navigation">
+        <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+      </button>
+      <ul class="nav-menu" id="navMenu">
+        <li><a href="index.html" class="nav-link">Home</a></li>
+        <li><a href="about.html" class="nav-link">About</a></li>
+        <li><a href="resources.html" class="nav-link">Resources</a></li>
+        <li><a href="join.html" class="nav-link active">Join</a></li>
+        <li><a href="admin.html" class="nav-link">Admin</a></li>
+      </ul>
+    </div>
+  </header>
+
+  <!-- Main Content -->
+  <main class="main-content">
+    
+    <!-- Hero Banner -->
+    <section class="hero-section">
+      <div class="hero-image-wrapper">
+        <img src="assets/hero.png" alt="Submit Organisation to Retrofit Directory" class="hero-image">
+        <div class="hero-overlay">
+          <h1 class="hero-title">Submit an Organisation</h1>
+          <p class="hero-subtitle">Join the nationwide register of organisations advancing low-carbon housing, energy efficiency, and retrofit solutions.</p>
+        </div>
+      </div>
+    </section>
+
+    <div class="page-header-card">
+      <h2 class="page-title">Directory Registration Form</h2>
+      <p class="page-intro">Lorem ipsum dolor sit amet, consectetur adipiscing elit. We welcome submissions from housing associations, local authorities, retrofit coordinators, installers, manufacturers, academic researchers, and advocacy groups.</p>
+    </div>
+
+    <!-- Interactive Workspace Card for Submission -->
+    <section class="workspace-card">
+      <div class="textarea-header">
+        <label for="userTextarea" class="textarea-label">Organisation Details &amp; Profile Summary</label>
+        <div class="textarea-side-buttons">
+          <button type="button" class="btn-small btn-small-outline" id="btnCopy">
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+            Copy
+          </button>
+          <button type="button" class="btn-small btn-small-primary" id="btnSave">
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+            Save
+          </button>
+        </div>
+      </div>
+      <textarea id="userTextarea" class="main-textarea" placeholder="Lorem ipsum dolor sit amet, enter your organisation name, contact email, address, retrofit scope, and primary area of expertise..."></textarea>
+      
+      <div class="actions-section">
+        <p class="actions-instruction">Select an action to process your submission profile:</p>
+        <div class="action-buttons-row">
+          <button type="button" class="action-btn" id="btnAnalyze">Analyze Retrofit Impact</button>
+          <button type="button" class="action-btn" id="btnExtract">Extract Keywords</button>
+          <button type="button" class="action-btn" id="btnFormat">Format Submission</button>
+          <button type="button" class="action-btn" id="btnSummary">Generate Summary</button>
+          <button type="button" class="action-btn" id="btnClear" style="color: #c53030; background-color: #fff5f5; border-color: #feb2b2;">Clear Form</button>
+        </div>
+      </div>
+
+      <div class="output-panel">
+        <div class="panel-header">
+          <h3 class="panel-title">Backend Response &amp; Data Panel</h3>
+          <span class="status-badge" id="panelStatusBadge">Ready</span>
+        </div>
+        <div class="panel-body" id="outputTextPanel">Backend response output will appear here.</div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Common Footer -->
+  <footer class="site-footer">
+    <div class="footer-content">
+      <p class="footer-text">&copy; 2026 The Retrofit Directory. All rights reserved. Supporting UK housing decarbonisation.</p>
+      <ul class="footer-links">
+        <li><a href="about.html">About</a></li>
+        <li><a href="resources.html">Resources</a></li>
+        <li><a href="join.html">Join Directory</a></li>
+        <li><a href="mailto:info@retrofit-directory.org.uk?subject=Inquiry">Contact Us</a></li>
+      </ul>
+    </div>
+  </footer>
+
+  <!-- Cookie Popup -->
+  <div class="cookie-popup" id="cookiePopup" role="dialog" aria-labelledby="cookieTitle">
+    <div class="cookie-content">
+      <h4 class="cookie-title" id="cookieTitle">Cookie &amp; Privacy Notice</h4>
+      <p class="cookie-text">We value your privacy. There are no cookies on this site other than those strictly required for basic functionality and secure navigation.</p>
+    </div>
+    <button type="button" class="cookie-btn" id="acceptCookiesBtn">Accept Essential Cookies</button>
+  </div>
+
+  <script src="js/app.js"></script>
+</body>
+</html>
