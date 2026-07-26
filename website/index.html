@@ -1,56 +1,167 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="description" content="The Retrofit Directory - Connecting organisations across the UK housing decarbonisation and retrofit system.">
-  <title>Home | The Retrofit Directory</title>
-  <link rel="stylesheet" href="assets/oat.min.css">
-  <link rel="stylesheet" href="css/style.css">
-</head>
-<body>
-
-  <!-- Navigation Header -->
-  <header class="site-header">
-    <div class="nav-container">
-      <a href="index.html" class="brand-logo">
-        <svg xmlns="http://www.w3.org/2000/svg" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
-          <polyline points="9 22 9 12 15 12 15 22"/>
-        </svg>
-        The Retrofit Directory
-      </a>
-      <button class="mobile-nav-toggle" id="mobileNavToggle" aria-label="Toggle Navigation">
-        <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
-      </button>
-      <ul class="nav-menu" id="navMenu">
-        <li><a href="index.html" class="nav-link active">Home</a></li>
-        <li><a href="about.html" class="nav-link">About</a></li>
-        <li><a href="resources.html" class="nav-link">Resources</a></li>
-        <li><a href="join.html" class="nav-link">Join</a></li>
-        <li><a href="admin.html" class="nav-link">Admin</a></li>
-      </ul>
-    </div>
-  </header>
-
-  <!-- Main Content -->
-  <main class="main-content">
-    
-    <!-- Hero Image Section -->
-    <section class="hero-section">
-      <div class="hero-image-wrapper">
-        <img src="assets/hero.png" alt="UK Sustainable Housing Retrofit Architecture" class="hero-image">
-        <div class="hero-overlay">
-          <h1 class="hero-title">Decarbonising the UK's Housing Stock</h1>
-          <p class="hero-subtitle">Connecting housing providers, policy strategists, researchers, and installers to accelerate sustainable building retrofit across the UK.</p>
-        </div>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="The Retrofit Directory - Connecting organisations across the UK housing decarbonisation and retrofit system."
+    />
+    <title>Home | The Retrofit Directory</title>
+    <link rel="stylesheet" href="assets/oat.min.css" />
+    <link rel="stylesheet" href="css/style.css" />
+  </head>
+  <body>
+    <!-- Navigation Header -->
+    <header class="site-header">
+      <div class="nav-container">
+        <a href="index.html" class="brand-logo">
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width="26"
+            height="26"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2.2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+            <polyline points="9 22 9 12 15 12 15 22" />
+          </svg>
+          The Retrofit Directory
+        </a>
+        <button class="mobile-nav-toggle" id="mobileNavToggle" aria-label="Toggle Navigation">
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width="22"
+            height="22"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+          >
+            <line x1="3" y1="12" x2="21" y2="12" />
+            <line x1="3" y1="6" x2="21" y2="6" />
+            <line x1="3" y1="18" x2="21" y2="18" />
+          </svg>
+        </button>
+        <ul class="nav-menu" id="navMenu">
+          <li><a href="index.html" class="nav-link active">Home</a></li>
+          <li><a href="about.html" class="nav-link">About</a></li>
+          <li><a href="resources.html" class="nav-link">Resources</a></li>
+          <li><a href="join.html" class="nav-link">Join</a></li>
+          <li><a href="admin.html" class="nav-link">Admin</a></li>
+        </ul>
       </div>
-    </section>
+    </header>
 
-    <!-- Workspace Card (Textarea + Action Buttons + Output Panel) -->
-    <section class="workspace-card">
+    <!-- Main Content -->
+    <main class="main-content">
+      <!-- Hero Image Section -->
+      <section class="hero-section">
+        <div class="hero-image-wrapper">
+          <img
+            src="assets/hero.png"
+            alt="UK Sustainable Housing Retrofit Architecture"
+            class="hero-image"
+          />
+          <div class="hero-overlay">
+            <h1 class="hero-title">The Retrofit Directory</h1>
+            <p class="hero-subtitle">
+              Connecting housing providers, policy strategists, researchers, and installers to
+              accelerate sustainable building retrofit across the UK.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <!-- Chat UI -->
+      <section id="chatbothelp">
+        <div id="chat-wrapper">
+          <div id="chat-container">
+            <div id="chat-header">
+              The PRSM Assistant - an AI powered chatbot that can answer questions about PRSM and
+              how to use it
+            </div>
+            <div id="chat-messages"></div>
+            <div id="processing-overlay" aria-busy="true" style="display: none">Processing...</div>
+            <div id="chat-input-area">
+              <input
+                type="text"
+                id="user-input"
+                placeholder="Ask anything about PRSM and how it can be used..."
+              />
+              <button id="send-btn">Send</button>
+              <div class="textarea-side-buttons">
+                <button
+                  type="button"
+                  class="btn-small btn-small-outline"
+                  id="btnCopy"
+                  title="Copy text to clipboard"
+                >
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    width="14"
+                    height="14"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                  >
+                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                  </svg>
+                  Copy
+                </button>
+                <button
+                  type="button"
+                  class="btn-small btn-small-outline"
+                  id="btnSave"
+                  title="Save text locally and submit to backend"
+                >
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    width="14"
+                    height="14"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                  >
+                    <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
+                    <polyline points="17 21 17 13 7 13 7 21" />
+                    <polyline points="7 3 7 8 15 8" />
+                  </svg>
+                  Save
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="actions-instruction">
+          The PRSM Assistant is an AI-powered chatbot designed to help users navigate and utilize
+          the features of the Participatory System Mapper (PRSM). Whether you're new to PRSM or
+          looking for advanced tips, the assistant can provide guidance on how to create maps, use
+          specific tools, and make the most of your mapping experience. However, please note that
+          the assistant is not perfect and may not always provide accurate or complete information.
+        </div>
+        <div class="action-buttons-row">
+          Try:
+          <button class="action-btn">What is a system map?</button>
+          <button class="action-btn">how do I draw a link between two factors?</button>
+          <button class="action-btn">Can I use PRSM for a stakeholder map?</button>
+          <button class="action-btn">Can I export to Excel?</button>
+          <button class="action-btn">Give me some tips about running a PSM workshop.</button>
+        </div>
+      </section>
+
+      <!-- Workspace Card (Textarea + Action Buttons + Output Panel) -->
+      <!--     <section class="workspace-card">
       <div class="textarea-header">
-        <label for="userTextarea" class="textarea-label">Organisation & Retrofit Submission Portal</label>
+        <label for="userTextarea" class="textarea-label">Query the Directory</label>
         <div class="textarea-side-buttons">
           <button type="button" class="btn-small btn-small-outline" id="btnCopy" title="Copy text to clipboard">
             <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
@@ -62,13 +173,18 @@
           </button>
         </div>
       </div>
-
+-->
       <!-- Large Textarea -->
-      <textarea id="userTextarea" class="main-textarea" placeholder="Lorem ipsum dolor sit amet, consectetur adipiscing elit. Enter details regarding your organisation, retrofit initiatives, housing project scopes, or research notes here..."></textarea>
+      <!-- <textarea id="userTextarea" class="main-textarea" placeholder="Ask anything related to retrofitting..."></textarea>-->
 
       <!-- Line of text and 5 Buttons -->
-      <div class="actions-section">
-        <p class="actions-instruction">Select an action to analyze or format your text entry below:</p>
+      <!-- <div class="actions-section">
+        <p class="actions-instruction">The PRSM Assistant is an AI-powered chatbot designed to help users navigate and
+              utilize the features of the Participatory System Mapper (PRSM). Whether you're new to
+              PRSM or looking for advanced tips, the assistant can provide guidance on how to create
+              maps, use specific tools, and make the most of your mapping experience. However,
+              please note that the assistant is not perfect and may not always provide accurate or
+              complete information.</p>
         <div class="action-buttons-row">
           <button type="button" class="action-btn" id="btnAnalyze">
             <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
@@ -91,10 +207,10 @@
             Clear Form
           </button>
         </div>
-      </div>
+      </div> -->
 
       <!-- Text Panel / Backend Response Output -->
-      <div class="output-panel">
+      <!--   <div class="output-panel">
         <div class="panel-header">
           <h3 class="panel-title">
             <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
@@ -104,46 +220,64 @@
         </div>
         <div class="panel-body" id="outputTextPanel">Backend response text will be displayed in this panel after submitting or running actions on your entry.</div>
       </div>
-    </section>
+    </section> -->
 
-    <!-- Additional Context Section -->
-    <section class="grid-cols-2">
-      <div class="info-card">
-        <h3>About the Directory</h3>
-        <p>Decarbonising the UK's housing stock is widely accepted to be a major priority to meet national emissions-reduction targets. The retrofit system is highly complex, interacting with policy, construction, and public health.</p>
-        <p>Our goal is to support organisations across all sectors to connect, collaborate, and share expertise seamlessly.</p>
+      <!-- Additional Context Section -->
+      <section class="grid-cols-2">
+        <div class="info-card">
+          <h3>About the Directory</h3>
+          <p>
+            Decarbonising the UK's housing stock is widely accepted to be a major priority to meet
+            national emissions-reduction targets. The retrofit system is highly complex, interacting
+            with policy, construction, and public health.
+          </p>
+          <p>
+            Our goal is to support organisations across all sectors to connect, collaborate, and
+            share expertise seamlessly.
+          </p>
+        </div>
+        <div class="info-card">
+          <h3>Get Involved</h3>
+          <p>
+            We are collecting information about organisations involved with the UK's retrofit
+            system—from product designers, housing providers, and policy strategists, to researchers
+            and community activists.
+          </p>
+          <p><a href="join.html">Submit your organisation to the directory &rarr;</a></p>
+        </div>
+      </section>
+    </main>
+
+    <!-- Common Footer -->
+    <footer class="site-footer">
+      <div class="footer-content">
+        <p class="footer-text">
+          &copy; 2026 The Retrofit Directory. All rights reserved. Supporting UK housing
+          decarbonisation.
+        </p>
+        <ul class="footer-links">
+          <li><a href="about.html">About</a></li>
+          <li><a href="resources.html">Resources</a></li>
+          <li><a href="join.html">Join Directory</a></li>
+          <li><a href="mailto:info@retrofit-directory.org.uk?subject=Inquiry">Contact Us</a></li>
+        </ul>
       </div>
-      <div class="info-card">
-        <h3>Get Involved</h3>
-        <p>We are collecting information about organisations involved with the UK's retrofit system—from product designers, housing providers, and policy strategists, to researchers and community activists.</p>
-        <p><a href="join.html">Submit your organisation to the directory &rarr;</a></p>
+    </footer>
+
+    <!-- Cookie Popup Modal -->
+    <div class="cookie-popup" id="cookiePopup" role="dialog" aria-labelledby="cookieTitle">
+      <div class="cookie-content">
+        <h4 class="cookie-title" id="cookieTitle">Cookie &amp; Privacy Notice</h4>
+        <p class="cookie-text">
+          We value your privacy. There are no cookies on this site other than those strictly
+          required for basic functionality and secure navigation.
+        </p>
       </div>
-    </section>
-
-  </main>
-
-  <!-- Common Footer -->
-  <footer class="site-footer">
-    <div class="footer-content">
-      <p class="footer-text">&copy; 2026 The Retrofit Directory. All rights reserved. Supporting UK housing decarbonisation.</p>
-      <ul class="footer-links">
-        <li><a href="about.html">About</a></li>
-        <li><a href="resources.html">Resources</a></li>
-        <li><a href="join.html">Join Directory</a></li>
-        <li><a href="mailto:info@retrofit-directory.org.uk?subject=Inquiry">Contact Us</a></li>
-      </ul>
+      <button type="button" class="cookie-btn" id="acceptCookiesBtn">
+        Accept Essential Cookies
+      </button>
     </div>
-  </footer>
 
-  <!-- Cookie Popup Modal -->
-  <div class="cookie-popup" id="cookiePopup" role="dialog" aria-labelledby="cookieTitle">
-    <div class="cookie-content">
-      <h4 class="cookie-title" id="cookieTitle">Cookie &amp; Privacy Notice</h4>
-      <p class="cookie-text">We value your privacy. There are no cookies on this site other than those strictly required for basic functionality and secure navigation.</p>
-    </div>
-    <button type="button" class="cookie-btn" id="acceptCookiesBtn">Accept Essential Cookies</button>
-  </div>
-
-  <script src="js/app.js"></script>
-</body>
+    <script src="../js/app.js"></script>
+  </body>
 </html>
