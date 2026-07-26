@@ -1,3 +1,6 @@
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import sqlite3 from "sqlite3";
 import { BedrockRuntimeClient, InvokeModelCommand } from "@aws-sdk/client-bedrock-runtime";
 import { createInterface } from "node:readline/promises";
@@ -6,7 +9,8 @@ import express from 'express'
 import cors from 'cors'
 import { createHttpTerminator } from 'http-terminator'
 
-const DB_PATH = "directory.db";
+const DB_PATH = path.join(path.dirname(fileURLToPath(import.meta.url)), "directory.db");
+const SCHEMA_PATH = path.join(path.dirname(fileURLToPath(import.meta.url)), "directory.schema");
 const BEDROCK_REGION = "eu-west-2";
 const BEDROCK_MODEL_ID = "eu.anthropic.claude-haiku-4-5-20251001-v1:0";
 const CHEAP_MODEL_ID = "qwen.qwen3-235b-a22b-2507-v1:0";
@@ -59,18 +63,6 @@ function all(db, sql, params = []) {
   });
 }
 
-function get(db, sql, params = []) {
-  return new Promise((resolve, reject) => {
-    db.get(sql, params, (err, row) => {
-      if (err) {
-        reject(err);
-        return;
-      }
-      resolve(row);
-    });
-  });
-}
-
 function close(db) {
   return new Promise((resolve, reject) => {
     db.close((err) => {
@@ -83,12 +75,20 @@ function close(db) {
   });
 }
 
-function quoteIdentifier(identifier) {
-  return `"${String(identifier).replace(/"/g, "\"\"")}"`;
-}
-
-function quoteStringLiteral(value) {
-  return `'${String(value).replace(/'/g, "''")}'`;
+function readSchema() {
+  try {
+    return fs.readFileSync(SCHEMA_PATH, "utf8");
+  } catch (err) {
+    if (err.code === "ENOENT") {
+      console.error(
+        `Error: schema file not found at ${SCHEMA_PATH}. ` +
+        `Run csvToDB.mjs first to generate it.`
+      );
+    } else {
+      console.error(`Error reading schema file at ${SCHEMA_PATH}:`, err.message);
+    }
+    throw err;
+  }
 }
 
 async function invokeBedrock(prompt, temperature) {
@@ -112,71 +112,8 @@ async function invokeBedrock(prompt, temperature) {
   return responseBody.content[0].text.trim();
 }
 
-export async function getDatabaseSchema(dbPath, sampleValues = 3) {
-  const db = await openDatabase(dbPath);
-
-  try {
-    const tables = await all(db, "SELECT name FROM sqlite_master WHERE type='table';");
-    const schemaLines = [];
-
-    for (const table of tables) {
-      const tableName = table.name;
-      const quotedTableName = quoteIdentifier(tableName);
-      const safeTableNameLiteral = quoteStringLiteral(tableName);
-
-      const countRow = await get(db, `SELECT COUNT(*) AS count FROM ${quotedTableName};`);
-      const totalRows = countRow.count;
-
-      schemaLines.push(`Table name: ${tableName} (${totalRows} rows)`);
-      schemaLines.push("Columns:");
-
-      const columns = await all(db, `PRAGMA table_info(${safeTableNameLiteral});`);
-
-      for (const col of columns) {
-        const colName = col.name;
-        const colType = col.type || "TEXT";
-        const quotedColumnName = quoteIdentifier(colName);
-
-        const populatedRow = await get(
-          db,
-          `SELECT COUNT(*) AS count FROM ${quotedTableName} ` +
-          `WHERE ${quotedColumnName} IS NOT NULL AND TRIM(CAST(${quotedColumnName} AS TEXT)) != '';`
-        );
-        const populated = populatedRow.count;
-
-        if (populated === 0) {
-          schemaLines.push(`  - ${colName} (${colType}) [EMPTY - no data]`);
-          continue;
-        }
-
-        const samples = await all(
-          db,
-          `SELECT DISTINCT ${quotedColumnName} AS value FROM ${quotedTableName} ` +
-          `WHERE ${quotedColumnName} IS NOT NULL AND TRIM(CAST(${quotedColumnName} AS TEXT)) != '' ` +
-          `LIMIT ${sampleValues};`
-        );
-
-        const sampleValuesText = samples
-          .map((row) => String(row.value).replace(/\n/g, " ").trim())
-          .map((value) => (value.length > 60 ? `${value.slice(0, 60)}...` : value))
-          .join("; ");
-
-        schemaLines.push(
-          `  - ${colName} (${colType}) [${populated}/${totalRows} populated] e.g. ${sampleValuesText}`
-        );
-      }
-
-      schemaLines.push("");
-    }
-
-    return schemaLines.join("\n");
-  } finally {
-    await close(db);
-  }
-}
-
 export async function generateSqlFromQuery(userQuery) {
-  const schema = await getDatabaseSchema(DB_PATH);
+  const schema = readSchema();
 
   const prompt = `You are an expert SQLite data analyst. Your job is to convert a user's natural language question into a valid, safe SQLite SELECT query based on the provided schema.
 

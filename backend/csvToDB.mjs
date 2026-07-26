@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { parse } from "csv-parse/sync";
 import sqlite3 from "sqlite3";
 
-const CSV_PATH = "directory.csv";
+const CSV_PATH = "../directory.csv";
 const DB_PATH = "directory.db";
 const SCHEMA_PATH = path.join(path.dirname(fileURLToPath(import.meta.url)), "directory.schema");
 const TABLE_NAME = "orgs";
@@ -155,6 +155,8 @@ async function main() {
 
     const extractedSchema = await getDatabaseSchema(db);
     fs.writeFileSync(SCHEMA_PATH, extractedSchema, "utf8");
+    console.log(`Database written to ${DB_PATH}`);
+    console.log(`Schema written to ${SCHEMA_PATH}`);
   } finally {
     await close(db);
   }
