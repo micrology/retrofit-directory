@@ -78,7 +78,7 @@
       </section>
 
       <!-- Chat UI -->
-      <section id="chatbothelp">
+      <section id="chatbot-help">
         <div id="chat-wrapper">
           <div id="chat-container">
             <div id="chat-header">
@@ -104,8 +104,27 @@
             <div id="processing-overlay" aria-busy="true" style="display: none">Processing...</div>
             <div id="chat-input-area">
               <input type="text" id="user-input" placeholder="Ask anything about retrofit..." />
-              <button id="send-btn">Send</button>
               <div class="textarea-side-buttons">
+                <button
+                  type="button"
+                  class="btn-small btn-small-primary"
+                  id="send-btn"
+                  title="Send the query to the chatbot"
+                >
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    width="14"
+                    height="14"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                  >
+                    <line x1="22" y1="2" x2="11" y2="13" />
+                    <polygon points="22 2 15 22 11 13 2 9 22 2" />
+                  </svg>
+                  Send
+                </button>
                 <button
                   type="button"
                   class="btn-small btn-small-outline"
