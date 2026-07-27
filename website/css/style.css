@@ -13,15 +13,21 @@
   --radius-sm: 6px;
   --radius-md: 10px;
   --radius-lg: 16px;
-  --shadow-sm: 0 1px 3px rgba(0,0,0,0.06);
-  --shadow-md: 0 4px 12px rgba(0,0,0,0.08);
-  --shadow-lg: 0 10px 25px rgba(0,0,0,0.12);
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.06);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.08);
+  --shadow-lg: 0 10px 25px rgba(0, 0, 0, 0.12);
 }
 
 body {
   background-color: var(--bg-color);
   color: var(--text-main);
-  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-family:
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    'Segoe UI',
+    Roboto,
+    sans-serif;
   min-height: 100vh;
   display: flex;
   flex-direction: column;
@@ -108,7 +114,7 @@ body {
   .mobile-nav-toggle {
     display: block;
   }
-  
+
   .nav-menu {
     display: none;
     position: absolute;
@@ -122,7 +128,7 @@ body {
     border-bottom: 1px solid var(--border-color);
     box-shadow: var(--shadow-md);
   }
-  
+
   .nav-menu.open {
     display: flex;
   }
@@ -182,7 +188,7 @@ main.main-content {
   font-size: clamp(1.5rem, 5vw, 2.2rem);
   font-weight: 700;
   margin: 0 0 0.5rem 0;
-  text-shadow: 0 1px 3px rgba(0,0,0,0.4);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
 }
 
 .hero-subtitle {
@@ -428,7 +434,7 @@ button.chat-suggestion:hover {
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;
-  justify-content:space-evenly;
+  justify-content: space-evenly;
 }
 
 .action-btn {
@@ -455,6 +461,20 @@ button.chat-suggestion:hover {
   background-color: var(--accent-color);
   color: #ffffff;
   border-color: var(--accent-color);
+}
+.action-btn-large {
+  padding: 0.5rem 1rem;
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: #ffffff;
+  background-color: var(--accent-color);
+  border: none;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+.action-btn-large:hover {
+  background-color: var(--primary-color);
 }
 
 /* Text Panel / Backend Output Display */
@@ -674,7 +694,16 @@ button.chat-suggestion:hover {
   font-weight: 600;
   color: var(--primary-color);
 }
-
+.footer-logos {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+.footer-logo {
+  width: 250px;
+}
 .footer-text {
   color: var(--text-muted);
   font-size: 0.875rem;
