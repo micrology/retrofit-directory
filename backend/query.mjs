@@ -8,6 +8,7 @@ import { stdin as input, stdout as output } from "node:process";
 import express from 'express'
 import cors from 'cors'
 import { createHttpTerminator } from 'http-terminator'
+import rateLimit from 'express-rate-limit'
 
 const DB_PATH = path.join(path.dirname(fileURLToPath(import.meta.url)), "directory.db");
 const SCHEMA_PATH = path.join(path.dirname(fileURLToPath(import.meta.url)), "directory.schema");
@@ -23,14 +24,23 @@ const app = express()
 const PORT = process.env.PORT || 5001
 
 app.set('trust proxy', 1) // trust first proxy, if behind a proxy
-app.use(cors({ origin: ['https://www.retrofit-directory.org.uk/', 'http://localhost', 'http://127.0.0.1'] }))
-app.use(express.json())
+app.use(cors({ origin: ['https://retrofit-directory.org.uk', 'https://www.retrofit-directory.org.uk'] }))
+app.use(express.json({ limit: '8kb' }))
+
+const queryLimiter = rateLimit({
+  windowMs: 60_000, // 1 minute
+  max: 20,          // max 20 requests per IP per minute
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many requests, please try again later.' },
+})
+app.use('/api/query', queryLimiter)
 
 let server // server instance
 let httpTerminator // terminator instance
 async function start() {
   // Start the server
-  server = app.listen(PORT, () => {
+  server = app.listen(PORT, '127.0.0.1', () => {
     console.log(
       `Proxy server running on http://localhost:${PORT}, usingmodels ${BEDROCK_MODEL_ID} and ${CHEAP_MODEL_ID} in ${BEDROCK_REGION} region`,
     )
@@ -41,7 +51,7 @@ start()
 
 function openDatabase(dbPath) {
   return new Promise((resolve, reject) => {
-    const db = new sqlite3.Database(dbPath, (err) => {
+    const db = new sqlite3.Database(dbPath, sqlite3.OPEN_READONLY, (err) => {
       if (err) {
         reject(err);
         return;
@@ -169,18 +179,50 @@ export async function generateNaturalLanguageAnswer(userQuery, sqlQuery, rawResu
   return invokeBedrock(prompt, 0.3);
 }
 
+// Validate that an LLM-generated SQL string is a safe SELECT-only statement.
+function validateSql(sql) {
+  // Strip leading whitespace and block comments before checking the statement type.
+  const stripped = sql.replace(/^(\s|\/\*.*?\*\/|--[^\n]*\n)*/s, '').trimStart();
+  if (!/^SELECT\b/i.test(stripped)) {
+    throw new Error(`Unsafe or unexpected SQL generated: ${sql.slice(0, 120)}`);
+  }
+}
+
+// Catch errors from middleware (e.g. PayloadTooLarge from express.json) and return clean JSON.
+app.use((err, req, res, next) => {
+  const status = err.status || err.statusCode || 500;
+  const message = status === 413 ? 'Request body too large'
+    : status < 500 ? err.message
+    : 'Internal Server Error';
+  res.status(status).json({ error: message });
+});
+
 app.post('/api/query', async (req, res) => {
   try {
     const userQuery = req.body.query;
-    if (!userQuery) {
-      return res.status(400).json({ error: "Missing 'query' in request body" });
+
+    // Validate input type and length.
+    if (typeof userQuery !== 'string' || !userQuery.trim()) {
+      return res.status(400).json({ error: "Missing or invalid 'query' in request body" });
+    }
+    if (userQuery.length > 500) {
+      return res.status(400).json({ error: "Query too long (max 500 characters)" });
     }
 
-    const sqlQuery = await generateSqlFromQuery(userQuery);
-    const rawResults = await queryDatabase(sqlQuery);
-    const answer = await generateNaturalLanguageAnswer(userQuery, sqlQuery, rawResults);
+    // Sanitise: strip characters that could break prompt string delimiters.
+    const safeQuery = userQuery.replace(/["\\]/g, ' ').trim();
 
-    res.json({ sqlQuery, rawResults, answer });
+    const sqlQuery = await generateSqlFromQuery(safeQuery);
+
+    // Reject anything that isn't a SELECT before it touches the database.
+    validateSql(sqlQuery);
+
+    const rawResults = await queryDatabase(sqlQuery);
+    const answer = await generateNaturalLanguageAnswer(safeQuery, sqlQuery, rawResults);
+
+    // Return only the natural-language answer; SQL and raw rows are logged server-side only.
+    console.log('Query processed:', { safeQuery, sqlQuery, rowCount: rawResults.length });
+    res.json({ answer });
   } catch (error) {
     console.error('Error processing query:', error);
     res.status(500).json({ error: 'Internal Server Error' });
