@@ -8,7 +8,7 @@ import sqlite3 from "sqlite3";
  * schema snapshot used by the query service.
  */
 
-const CSV_PATH = "../directory.csv";
+const CSV_PATH = process.argv[2] || "../directory.csv";
 const DB_PATH = "directory.db";
 const SCHEMA_PATH = path.join(path.dirname(fileURLToPath(import.meta.url)), "directory.schema");
 const TABLE_NAME = "orgs";
@@ -198,6 +198,7 @@ async function main() {
 
     const extractedSchema = await getDatabaseSchema(db);
     fs.writeFileSync(SCHEMA_PATH, extractedSchema, "utf8");
+    console.log(`Input file: ${CSV_PATH}`);
     console.log(`Database written to ${DB_PATH}`);
     console.log(`Schema written to ${SCHEMA_PATH}`);
   } finally {
