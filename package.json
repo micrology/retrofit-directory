@@ -1,6 +1,0 @@
-{
-  "dependencies": {
-    "@aws-sdk/client-secrets-manager": "^3.1095.0",
-    "http-terminator": "^3.2.0"
-  }
-}

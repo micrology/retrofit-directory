@@ -1,82 +1,100 @@
 Table name: orgs
 Columns:
-  - start_date (TEXT)
-  - end_date (TEXT)
-  - response_type (TEXT)
-  - ip_address (TEXT)
-  - progress (INTEGER)
-  - duration_(in_seconds) (INTEGER)
-  - finished (TEXT)
-  - recorded_date (TEXT)
-  - response_id (TEXT)
-  - recipient_last_name (TEXT)
-  - recipient_first_name (TEXT)
-  - recipient_email (TEXT)
-  - external_data_reference (TEXT)
-  - location_latitude (REAL)
-  - location_longitude (REAL)
-  - distribution_channel (TEXT)
-  - user_language (TEXT)
-  - what_is_the_name_of_the_organisation_you_wish_to_add_to_the_directory? (TEXT)
+  - start_date (TEXT) [populated 41/41] examples: "2026-05-06 02:56:02", "2026-05-20 03:13:49", "2026-05-20 03:18:16"
+  - end_date (TEXT) [populated 41/41] examples: "2026-05-06 03:01:54", "2026-05-20 03:27:25", "2026-05-20 03:33:35"
+  - response_type (TEXT) [populated 41/41] examples: "IP Address", "Survey Preview"
+  - ip_address (TEXT) [populated 39/41] examples: "160.9.46.52", "172.226.0.7", "5.64.41.207"
+  - progress (INTEGER) [populated 41/41] examples: "40", "80", "95"
+  - duration_(in_seconds) (INTEGER) [populated 41/41] examples: "83", "347", "351"
+  - finished (TEXT) [populated 41/41] examples: "True", "False"
+  - recorded_date (TEXT) [populated 41/41] examples: "2026-05-06 03:01:55", "2026-05-20 03:27:26", "2026-05-20 03:33:36"
+  - response_id (TEXT) [populated 41/41] examples: "R_239SUG4YM9QrPSb", "R_24MptVv2gJqp6sr", "R_2DUFLxWjLTzap4Z"
+  - recipient_last_name (TEXT) [EMPTY - no data]
+  - recipient_first_name (TEXT) [EMPTY - no data]
+  - recipient_email (TEXT) [EMPTY - no data]
+  - external_data_reference (TEXT) [EMPTY - no data]
+  - location_latitude (REAL) [populated 41/41] examples: "50.801", "51.358", "51.367"
+  - location_longitude (REAL) [populated 41/41] examples: "0.454", "-0.055", "-0.093"
+  - distribution_channel (TEXT) [populated 41/41] examples: "preview", "anonymous"
+  - user_language (TEXT) [populated 41/41] examples: "EN"
+  - what_is_the_name_of_the_organisation_you_wish_to_add_to_the_directory? (TEXT) [populated 41/41] examples: "AXIS CLC", "Chimni Ltd", "RVI Design"
   - for_large_organisations_whose_remit_spans_beyond_retrofit,_please_consider_submitting_a_specific_department_or_unit_to_the_directory._
 
-please_enter_the_department_or_unit_name_here,_if_relevant._otherwise,_please_leave_blank. (TEXT)
+please_enter_the_department_or_unit_name_here,_if_relevant._otherwise,_please_leave_blank. (TEXT) [populated 11/41] examples: "Housing", "Retrofit Team", "ASHP Department"
   - what_is_the_organisation's_main_type?_
 
-(if_none_of_these_options_fit_well,_please_select_'other'_and_specify)_-_selected_choice (TEXT)
+(if_none_of_these_options_fit_well,_please_select_'other'_and_specify)_-_selected_choice (TEXT) [populated 41/41] examples: "Consultant or advisor", "Product manufacturer / supplier", "Academic department / group / network"
   - what_is_the_organisation's_main_type?_
 
-(if_none_of_these_options_fit_well,_please_select_'other'_and_specify)_-_other_public_body_(please_specify_type)_-_text (TEXT)
+(if_none_of_these_options_fit_well,_please_select_'other'_and_specify)_-_other_public_body_(please_specify_type)_-_text (TEXT) [populated 2/41] examples: "All of the above.", "Consumer advocate"
   - what_is_the_organisation's_main_type?_
 
-(if_none_of_these_options_fit_well,_please_select_'other'_and_specify)_-_other_private_company_(please_specify_type)_-_text (TEXT)
+(if_none_of_these_options_fit_well,_please_select_'other'_and_specify)_-_other_private_company_(please_specify_type)_-_text (TEXT) [populated 5/41] examples: "Consumer Code", "One Stop Shop Retrofit Platform", "Digital Property Logbook provider"
   - what_is_the_organisation's_main_type?_
 
-(if_none_of_these_options_fit_well,_please_select_'other'_and_specify)_-_other_non-profit_(please_specify_type)_-_text (TEXT)
-  - what_geographic_scope_does_the_organisation_cover?_(please_choose_the_most_relevant_one) (TEXT)
-  - list_of_countries (TEXT)
-  - for_uk-based_organisations,_in_which_county_is_it_based? (TEXT)
-  - in_which_geographic_areas_is_the_organisation_currently_operating?_(select_all_that_apply)_-_selected_choice (TEXT)
-  - in_which_geographic_areas_is_the_organisation_currently_operating?_(select_all_that_apply)_-_other_(please_specify)_-_text (TEXT)
-  - what_is_the_main_mission_or_remit_of_the_organisation? (TEXT)
-  - how_is_the_organisation’s_work_relevant_to_retrofit? (TEXT)
-  - in_terms_of_retrofit,_what_is_the_organisation's_primary_activity?_(please_select_one._more_detail_can_be_provided_when_answering_the_following_questions.)_-_selected_choice (TEXT)
-  - in_terms_of_retrofit,_what_is_the_organisation's_primary_activity?_(please_select_one._more_detail_can_be_provided_when_answering_the_following_questions.)_-_none_of_the_above_/_other_(please_specify)_-_text (TEXT)
-  - in_terms_of_retrofit,_what_other_activities_does_the_organisation_carry_out?_(select_all_that_apply)_-_selected_choice (TEXT)
-  - in_terms_of_retrofit,_what_other_activities_does_the_organisation_carry_out?_(select_all_that_apply)_-_none_of_the_above_/_other_(please_specify)_-_text (TEXT)
-  - in_terms_of_retrofit,_what_are_the_organisation's_areas_of_specialism?_(select_all_that_apply)_-_selected_choice (TEXT)
-  - in_terms_of_retrofit,_what_are_the_organisation's_areas_of_specialism?_(select_all_that_apply)_-_none_of_the_above_/_other_(please_specify)_-_text (TEXT)
-  - in_terms_of_retrofit,_what_methods_or_technical_skills_does_the_organisation_use?_(select_all_that_apply)_-_selected_choice (TEXT)
-  - in_terms_of_retrofit,_what_methods_or_technical_skills_does_the_organisation_use?_(select_all_that_apply)_-_none_of_the_above_/_other_(please_specify)_-_text (TEXT)
-  - in_terms_of_retrofit,_who_does_the_organisation_work_with,_directly_or_indirectly?_(select_all_that_apply)_-_people_experiencing_fuel_poverty (TEXT)
-  - in_terms_of_retrofit,_who_does_the_organisation_work_with,_directly_or_indirectly?_(select_all_that_apply)_-_people_with_health_conditions_affected_by_housing (TEXT)
-  - in_terms_of_retrofit,_who_does_the_organisation_work_with,_directly_or_indirectly?_(select_all_that_apply)_-_other_groups_experiencing_inequalities_or_vulnerabilities (TEXT)
-  - in_terms_of_retrofit,_who_does_the_organisation_work_with,_directly_or_indirectly?_(select_all_that_apply)_-_tenants'_or_residents'_associations (TEXT)
-  - in_terms_of_retrofit,_who_does_the_organisation_work_with,_directly_or_indirectly?_(select_all_that_apply)_-_community_groups_or_organisations (TEXT)
-  - in_terms_of_retrofit,_who_does_the_organisation_work_with,_directly_or_indirectly?_(select_all_that_apply)_-_general_public (TEXT)
-  - in_terms_of_retrofit,_who_does_the_organisation_work_with,_directly_or_indirectly?_(select_all_that_apply)_-_local_or_combined_authority_officers_or_councillors (TEXT)
-  - in_terms_of_retrofit,_who_does_the_organisation_work_with,_directly_or_indirectly?_(select_all_that_apply)_-_central_government_officials_or_agencies (TEXT)
-  - in_terms_of_retrofit,_who_does_the_organisation_work_with,_directly_or_indirectly?_(select_all_that_apply)_-_regulators_or_standards_bodies_or_professionals (TEXT)
-  - in_terms_of_retrofit,_who_does_the_organisation_work_with,_directly_or_indirectly?_(select_all_that_apply)_-_funders,_investors_or_grant-makers (TEXT)
-  - in_terms_of_retrofit,_who_does_the_organisation_work_with,_directly_or_indirectly?_(select_all_that_apply)_-_social_housing_providers (TEXT)
-  - in_terms_of_retrofit,_who_does_the_organisation_work_with,_directly_or_indirectly?_(select_all_that_apply)_-_housing_associations_or_other_non-profit_providers (TEXT)
-  - in_terms_of_retrofit,_who_does_the_organisation_work_with,_directly_or_indirectly?_(select_all_that_apply)_-_private_housing_providers_/_landlords_/_letting_agents (TEXT)
-  - in_terms_of_retrofit,_who_does_the_organisation_work_with,_directly_or_indirectly?_(select_all_that_apply)_-_developers_/_builders_/_contractors_/_installers (TEXT)
-  - in_terms_of_retrofit,_who_does_the_organisation_work_with,_directly_or_indirectly?_(select_all_that_apply)_-_product_developers_/_manufacturers_/_suppliers (TEXT)
-  - in_terms_of_retrofit,_who_does_the_organisation_work_with,_directly_or_indirectly?_(select_all_that_apply)_-_architects_/_engineers_/_other_design_professionals (TEXT)
-  - in_terms_of_retrofit,_who_does_the_organisation_work_with,_directly_or_indirectly?_(select_all_that_apply)_-_building_/_facilities_managers (TEXT)
-  - in_terms_of_retrofit,_who_does_the_organisation_work_with,_directly_or_indirectly?_(select_all_that_apply)_-_researchers (TEXT)
-  - in_terms_of_retrofit,_who_does_the_organisation_work_with,_directly_or_indirectly?_(select_all_that_apply)_-_network_convenors (TEXT)
-  - in_terms_of_retrofit,_who_does_the_organisation_work_with,_directly_or_indirectly?_(select_all_that_apply)_-_consultants_or_advisors (TEXT)
-  - in_terms_of_retrofit,_who_does_the_organisation_work_with,_directly_or_indirectly?_(select_all_that_apply)_-_other_groups_or_audiences_(please_specify) (TEXT)
-  - in_terms_of_retrofit,_who_does_the_organisation_work_with,_directly_or_indirectly?_(select_all_that_apply)_-_other_groups_or_audiences_(please_specify)_-_text (TEXT)
-  - has_the_organisation_managed_the_delivery_of_local_initiatives_funded_through_any_of_the_following_schemes?_(select_all_that_apply)_-_selected_choice (TEXT)
-  - has_the_organisation_managed_the_delivery_of_local_initiatives_funded_through_any_of_the_following_schemes?_(select_all_that_apply)_-_local_authority_finance_fund_(please_specify)_-_text (TEXT)
-  - has_the_organisation_managed_the_delivery_of_local_initiatives_funded_through_any_of_the_following_schemes?_(select_all_that_apply)_-_other_(please_specfy)_-_text (TEXT)
-  - please_add_a_link_to_the_organisation’s_website_or_web_page._if_it_does_not_have_a_website_or_page,_please_leave_blank. (TEXT)
+(if_none_of_these_options_fit_well,_please_select_'other'_and_specify)_-_other_non-profit_(please_specify_type)_-_text (TEXT) [populated 7/41] examples: "Charity", "Retrofit Hub", "Energy Advice Charity"
+  - what_geographic_scope_does_the_organisation_cover?_(please_choose_the_most_relevant_one) (TEXT) [populated 41/41] examples: "Local", "National", "Regional"
+  - list_of_countries (TEXT) [populated 41/41] examples: "United Kingdom"
+  - for_uk-based_organisations,_in_which_county_is_it_based? (TEXT) [populated 41/41] examples: "Kent (England)", "Bristol (England)", "Norfolk (England)"
+  - in_which_geographic_areas_is_the_organisation_currently_operating?_(select_all_that_apply)_-_selected_choice (TEXT) [populated 19/41] examples: "Wales", "London", "North West"
+  - in_which_geographic_areas_is_the_organisation_currently_operating?_(select_all_that_apply)_-_other_(please_specify)_-_text (TEXT) [populated 1/41] examples: "Kent Only"
+  - what_is_the_main_mission_or_remit_of_the_organisation? (TEXT) [populated 38/41] examples: "Test", "1980-01-01 00:00:00", "2038-01-01 00:00:00"
+  - how_is_the_organisation’s_work_relevant_to_retrofit? (TEXT) [populated 38/41] examples: "Test", "Provide frameworks/ DPS for Retrofit related activity", "Providing advice, guidance, and funding for retrofit."
+  - in_terms_of_retrofit,_what_is_the_organisation's_primary_activity?_(please_select_one._more_detail_can_be_provided_when_answering_the_following_questions.)_-_selected_choice (TEXT) [populated 38/41] examples: "Producing guidance", "Quantitative research", "Housing retrofit design"
+  - in_terms_of_retrofit,_what_is_the_organisation's_primary_activity?_(please_select_one._more_detail_can_be_provided_when_answering_the_following_questions.)_-_none_of_the_above_/_other_(please_specify)_-_text (TEXT) [populated 3/41] examples: "test", "Interdisciplinary research", "Providing Digital Property Logbooks to homeowners containing all relevant inform"
+  - in_terms_of_retrofit,_what_other_activities_does_the_organisation_carry_out?_(select_all_that_apply)_-_selected_choice (TEXT) [populated 38/41] examples: "Producing guidance", "Advising residents / the public", "None of the above / other (please specify)"
+  - in_terms_of_retrofit,_what_other_activities_does_the_organisation_carry_out?_(select_all_that_apply)_-_none_of_the_above_/_other_(please_specify)_-_text (TEXT) [populated 4/41] examples: "test", "Financial Protection Provider", "Procurement of retrofit supply chain"
+  - in_terms_of_retrofit,_what_are_the_organisation's_areas_of_specialism?_(select_all_that_apply)_-_selected_choice (TEXT) [populated 38/41] examples: "Housing provision", "Building standards and quality", "Markets, supply chains, finance"
+  - in_terms_of_retrofit,_what_are_the_organisation's_areas_of_specialism?_(select_all_that_apply)_-_none_of_the_above_/_other_(please_specify)_-_text (TEXT) [populated 3/41] examples: "Consumer Protection", "consumer protection", "Data management and consumer/homeowner focussed software design."
+  - in_terms_of_retrofit,_what_methods_or_technical_skills_does_the_organisation_use?_(select_all_that_apply)_-_selected_choice (TEXT) [populated 38/41] examples: "Software development", "Advice / advocacy,Regulation / target setting", "Product installation / retrofit implementation"
+  - in_terms_of_retrofit,_what_methods_or_technical_skills_does_the_organisation_use?_(select_all_that_apply)_-_none_of_the_above_/_other_(please_specify)_-_text (TEXT) [populated 1/41] examples: "test"
+  - in_terms_of_retrofit,_who_does_the_organisation_work_with,_directly_or_indirectly?_(select_all_that_apply)_-_people_experiencing_fuel_poverty (TEXT) [populated 25/41] examples: "Directly", "Indirectly"
+  - in_terms_of_retrofit,_who_does_the_organisation_work_with,_directly_or_indirectly?_(select_all_that_apply)_-_people_with_health_conditions_affected_by_housing (TEXT) [populated 26/41] examples: "Directly", "Indirectly"
+  - in_terms_of_retrofit,_who_does_the_organisation_work_with,_directly_or_indirectly?_(select_all_that_apply)_-_other_groups_experiencing_inequalities_or_vulnerabilities (TEXT) [populated 22/41] examples: "Directly", "Indirectly"
+  - in_terms_of_retrofit,_who_does_the_organisation_work_with,_directly_or_indirectly?_(select_all_that_apply)_-_tenants'_or_residents'_associations (TEXT) [populated 20/41] examples: "Directly", "Indirectly"
+  - in_terms_of_retrofit,_who_does_the_organisation_work_with,_directly_or_indirectly?_(select_all_that_apply)_-_community_groups_or_organisations (TEXT) [populated 24/41] examples: "Directly", "Indirectly"
+  - in_terms_of_retrofit,_who_does_the_organisation_work_with,_directly_or_indirectly?_(select_all_that_apply)_-_general_public (TEXT) [populated 31/41] examples: "Directly", "Indirectly"
+  - in_terms_of_retrofit,_who_does_the_organisation_work_with,_directly_or_indirectly?_(select_all_that_apply)_-_local_or_combined_authority_officers_or_councillors (TEXT) [populated 29/41] examples: "Directly", "Indirectly"
+  - in_terms_of_retrofit,_who_does_the_organisation_work_with,_directly_or_indirectly?_(select_all_that_apply)_-_central_government_officials_or_agencies (TEXT) [populated 30/41] examples: "Directly", "Indirectly"
+  - in_terms_of_retrofit,_who_does_the_organisation_work_with,_directly_or_indirectly?_(select_all_that_apply)_-_regulators_or_standards_bodies_or_professionals (TEXT) [populated 26/41] examples: "Directly", "Indirectly"
+  - in_terms_of_retrofit,_who_does_the_organisation_work_with,_directly_or_indirectly?_(select_all_that_apply)_-_funders,_investors_or_grant-makers (TEXT) [populated 25/41] examples: "Directly", "Indirectly"
+  - in_terms_of_retrofit,_who_does_the_organisation_work_with,_directly_or_indirectly?_(select_all_that_apply)_-_social_housing_providers (TEXT) [populated 21/41] examples: "Directly", "Indirectly"
+  - in_terms_of_retrofit,_who_does_the_organisation_work_with,_directly_or_indirectly?_(select_all_that_apply)_-_housing_associations_or_other_non-profit_providers (TEXT) [populated 21/41] examples: "Directly", "Indirectly"
+  - in_terms_of_retrofit,_who_does_the_organisation_work_with,_directly_or_indirectly?_(select_all_that_apply)_-_private_housing_providers_/_landlords_/_letting_agents (TEXT) [populated 28/41] examples: "Directly", "Indirectly"
+  - in_terms_of_retrofit,_who_does_the_organisation_work_with,_directly_or_indirectly?_(select_all_that_apply)_-_developers_/_builders_/_contractors_/_installers (TEXT) [populated 31/41] examples: "Directly", "Indirectly"
+  - in_terms_of_retrofit,_who_does_the_organisation_work_with,_directly_or_indirectly?_(select_all_that_apply)_-_product_developers_/_manufacturers_/_suppliers (TEXT) [populated 30/41] examples: "Directly", "Indirectly"
+  - in_terms_of_retrofit,_who_does_the_organisation_work_with,_directly_or_indirectly?_(select_all_that_apply)_-_architects_/_engineers_/_other_design_professionals (TEXT) [populated 30/41] examples: "Directly", "Indirectly"
+  - in_terms_of_retrofit,_who_does_the_organisation_work_with,_directly_or_indirectly?_(select_all_that_apply)_-_building_/_facilities_managers (TEXT) [populated 21/41] examples: "Directly", "Indirectly"
+  - in_terms_of_retrofit,_who_does_the_organisation_work_with,_directly_or_indirectly?_(select_all_that_apply)_-_researchers (TEXT) [populated 29/41] examples: "Directly", "Indirectly"
+  - in_terms_of_retrofit,_who_does_the_organisation_work_with,_directly_or_indirectly?_(select_all_that_apply)_-_network_convenors (TEXT) [populated 26/41] examples: "Directly", "Indirectly"
+  - in_terms_of_retrofit,_who_does_the_organisation_work_with,_directly_or_indirectly?_(select_all_that_apply)_-_consultants_or_advisors (TEXT) [populated 29/41] examples: "Directly", "Indirectly"
+  - in_terms_of_retrofit,_who_does_the_organisation_work_with,_directly_or_indirectly?_(select_all_that_apply)_-_other_groups_or_audiences_(please_specify) (TEXT) [populated 2/41] examples: "Indirectly"
+  - in_terms_of_retrofit,_who_does_the_organisation_work_with,_directly_or_indirectly?_(select_all_that_apply)_-_other_groups_or_audiences_(please_specify)_-_text (TEXT) [populated 3/41] examples: ".", "Not applicable", "Enable innovative training in Green Skills"
+  - has_the_organisation_managed_the_delivery_of_local_initiatives_funded_through_any_of_the_following_schemes?_(select_all_that_apply)_-_selected_choice (TEXT) [populated 21/41] examples: "Green Homes Grant", "Other (please specfy)", "Local Net Zero Hubs Programme"
+  - has_the_organisation_managed_the_delivery_of_local_initiatives_funded_through_any_of_the_following_schemes?_(select_all_that_apply)_-_local_authority_finance_fund_(please_specify)_-_text (TEXT) [populated 2/41] examples: "Lendology", "Household Support Fund; Crisis and Resilience Fund"
+  - has_the_organisation_managed_the_delivery_of_local_initiatives_funded_through_any_of_the_following_schemes?_(select_all_that_apply)_-_other_(please_specfy)_-_text (TEXT) [populated 6/41] examples: "HUGS, LADS", "ORP, LAD, MAYORS FUNDS, PSDS", "Great British Insulation Scheme"
+  - please_add_a_link_to_the_organisation’s_website_or_web_page._if_it_does_not_have_a_website_or_page,_please_leave_blank. (TEXT) [populated 37/41] examples: "Test", "www.rich.com", "locohome.coop"
   - please_provide_a_general_contact_email_for_the_organisation_(e.g._‘info@...’).
 
 
 
-please_do_not_provide_a_personal_email_address._if_the_organisation_does_not_have_a_general_email_address,_please_leave_blank. (TEXT)
-  - approximately_how_many_employees_does_the_organisation_have? (TEXT)
+please_do_not_provide_a_personal_email_address._if_the_organisation_does_not_have_a_general_email_address,_please_leave_blank. (TEXT) [populated 36/41] examples: "Test", "rvi@rviad.com", "us@mop-a.co.uk"
+  - approximately_how_many_employees_does_the_organisation_have? (TEXT) [populated 37/41] examples: "250+", "10-49", "50-249"
+
+View name: orgs_llm
+Columns:
+  - org_name (TEXT) [populated 41/41] examples: "AXIS CLC", "Chimni Ltd", "RVI Design"
+  - org_main_type (TEXT) [populated 41/41] examples: "Consultant or advisor", "Product manufacturer / supplier", "Academic department / group / network"
+  - county (TEXT) [populated 41/41] examples: "Kent (England)", "Bristol (England)", "Norfolk (England)"
+  - geographic_scope (TEXT) [populated 41/41] examples: "Local", "National", "Regional"
+  - operating_areas (TEXT) [populated 19/41] examples: "Wales", "London", "North West"
+  - main_mission_or_remit (TEXT) [populated 38/41] examples: "Test", "1980-01-01 00:00:00", "2038-01-01 00:00:00"
+  - retrofit_relevance (TEXT) [populated 38/41] examples: "Test", "Provide frameworks/ DPS for Retrofit related activity", "Providing advice, guidance, and funding for retrofit."
+  - primary_activity (TEXT) [populated 38/41] examples: "Producing guidance", "Quantitative research", "Housing retrofit design"
+  - other_activities (TEXT) [populated 38/41] examples: "Producing guidance", "Advising residents / the public", "None of the above / other (please specify)"
+  - specialisms (TEXT) [populated 38/41] examples: "Housing provision", "Building standards and quality", "Markets, supply chains, finance"
+  - methods_or_skills (TEXT) [populated 38/41] examples: "Software development", "Advice / advocacy,Regulation / target setting", "Product installation / retrofit implementation"
+  - works_with_architects (TEXT) [populated 30/41] examples: "Directly", "Indirectly"
+  - website (TEXT) [populated 37/41] examples: "Test", "www.rich.com", "locohome.coop"
+  - contact_email (TEXT) [populated 36/41] examples: "Test", "rvi@rviad.com", "us@mop-a.co.uk"
+  - employee_count_band (TEXT) [populated 37/41] examples: "250+", "10-49", "50-249"
