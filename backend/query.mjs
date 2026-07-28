@@ -9,6 +9,10 @@ import express from 'express'
 import cors from 'cors'
 import { createHttpTerminator } from 'http-terminator'
 import rateLimit from 'express-rate-limit'
+/**
+ * HTTP API for natural-language querying over the retrofit SQLite directory.
+ * It uses Bedrock-hosted models to generate SQL and natural-language answers.
+ */
 
 const DB_PATH = path.join(path.dirname(fileURLToPath(import.meta.url)), "directory.db");
 const SCHEMA_PATH = path.join(path.dirname(fileURLToPath(import.meta.url)), "directory.schema");
@@ -38,17 +42,26 @@ app.use('/api/query', queryLimiter)
 
 let server // server instance
 let httpTerminator // terminator instance
+/**
+ * Start the local Express HTTP server and attach a terminator for graceful shutdown.
+ * @returns {Promise<void>}
+ */
 async function start() {
   // Start the server
   server = app.listen(PORT, '127.0.0.1', () => {
     console.log(
-      `Proxy server running on http://localhost:${PORT}, usingmodels ${BEDROCK_MODEL_ID} and ${CHEAP_MODEL_ID} in ${BEDROCK_REGION} region`,
+      `Proxy server running on http://localhost:${PORT}, using models ${BEDROCK_MODEL_ID} and ${CHEAP_MODEL_ID} in ${BEDROCK_REGION} region`
     )
   })
   httpTerminator = createHttpTerminator({ server })
 }
 start()
 
+/**
+ * Open the SQLite database in read-only mode for query execution.
+ * @param {string} dbPath
+ * @returns {Promise<sqlite3.Database>}
+ */
 function openDatabase(dbPath) {
   return new Promise((resolve, reject) => {
     const db = new sqlite3.Database(dbPath, sqlite3.OPEN_READONLY, (err) => {
@@ -61,6 +74,13 @@ function openDatabase(dbPath) {
   });
 }
 
+/**
+ * Promise-based wrapper around sqlite3 `db.all`.
+ * @param {sqlite3.Database} db
+ * @param {string} sql
+ * @param {unknown[]} [params=[]]
+ * @returns {Promise<any[]>}
+ */
 function all(db, sql, params = []) {
   return new Promise((resolve, reject) => {
     db.all(sql, params, (err, rows) => {
@@ -73,6 +93,11 @@ function all(db, sql, params = []) {
   });
 }
 
+/**
+ * Close sqlite database connection.
+ * @param {sqlite3.Database} db
+ * @returns {Promise<void>}
+ */
 function close(db) {
   return new Promise((resolve, reject) => {
     db.close((err) => {
@@ -85,6 +110,10 @@ function close(db) {
   });
 }
 
+/**
+ * Read the persisted plain-text schema used in SQL-generation prompts.
+ * @returns {string}
+ */
 function readSchema() {
   try {
     return fs.readFileSync(SCHEMA_PATH, "utf8");
@@ -101,6 +130,12 @@ function readSchema() {
   }
 }
 
+/**
+ * Invoke the configured Bedrock model with a single user prompt.
+ * @param {string} prompt
+ * @param {number} temperature
+ * @returns {Promise<string>}
+ */
 async function invokeBedrock(prompt, temperature) {
   const body = JSON.stringify({
     anthropic_version: "bedrock-2023-05-31",
@@ -122,6 +157,11 @@ async function invokeBedrock(prompt, temperature) {
   return responseBody.content[0].text.trim();
 }
 
+/**
+ * Convert a natural-language user question into a SQL SELECT statement.
+ * @param {string} userQuery
+ * @returns {Promise<string>}
+ */
 export async function generateSqlFromQuery(userQuery) {
   const schema = readSchema();
 
@@ -147,6 +187,11 @@ export async function generateSqlFromQuery(userQuery) {
   return invokeBedrock(prompt, 0.0);
 }
 
+/**
+ * Execute SQL against the SQLite directory and return row values only.
+ * @param {string} sqlQuery
+ * @returns {Promise<any[][]>}
+ */
 export async function queryDatabase(sqlQuery) {
   const db = await openDatabase(DB_PATH);
 
@@ -158,6 +203,13 @@ export async function queryDatabase(sqlQuery) {
   }
 }
 
+/**
+ * Turn raw SQL result rows into a concise natural-language answer.
+ * @param {string} userQuery
+ * @param {string} sqlQuery
+ * @param {any[][]} rawResults
+ * @returns {Promise<string>}
+ */
 export async function generateNaturalLanguageAnswer(userQuery, sqlQuery, rawResults) {
   const prompt = `You are a helpful assistant for a public retrofit organisation database. 
     A user asked a question, a SQL query was run against the database, and raw results were returned.
@@ -180,6 +232,11 @@ export async function generateNaturalLanguageAnswer(userQuery, sqlQuery, rawResu
 }
 
 // Validate that an LLM-generated SQL string is a safe SELECT-only statement.
+/**
+ * Guardrail: allow only SELECT statements before sending SQL to SQLite.
+ * @param {string} sql
+ * @returns {void}
+ */
 function validateSql(sql) {
   // Strip leading whitespace and block comments before checking the statement type.
   const stripped = sql.replace(/^(\s|\/\*.*?\*\/|--[^\n]*\n)*/s, '').trimStart();

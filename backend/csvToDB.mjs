@@ -3,6 +3,10 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { parse } from "csv-parse/sync";
 import sqlite3 from "sqlite3";
+/**
+ * Import the source CSV into a local SQLite database and emit a plain-text
+ * schema snapshot used by the query service.
+ */
 
 const CSV_PATH = "../directory.csv";
 const DB_PATH = "directory.db";
@@ -10,14 +14,31 @@ const SCHEMA_PATH = path.join(path.dirname(fileURLToPath(import.meta.url)), "dir
 const TABLE_NAME = "orgs";
 const HEADER_ROW_INDEX = 1;
 const SKIP_ROWS = new Set([2]);
+/**
+ * Normalise a CSV header label into a deterministic SQL column identifier.
+ * @param {unknown} columnName
+ * @returns {string}
+ */
 
 function cleanColumnName(columnName) {
   return String(columnName).trim().toLowerCase().replace(/ /g, "_");
 }
+/**
+ * Safely quote a SQLite identifier (e.g. table/column name).
+ * @param {unknown} identifier
+ * @returns {string}
+ */
 
 function quoteIdentifier(identifier) {
   return `"${String(identifier).replace(/"/g, "\"\"")}"`;
 }
+/**
+ * Promise-based wrapper around sqlite3 `db.run`.
+ * @param {sqlite3.Database} db
+ * @param {string} sql
+ * @param {unknown[]} [params=[]]
+ * @returns {Promise<void>}
+ */
 
 function run(db, sql, params = []) {
   return new Promise((resolve, reject) => {
@@ -31,6 +52,12 @@ function run(db, sql, params = []) {
   });
 }
 
+/**
+ * Promise-based wrapper around sqlite3 `db.all`.
+ * @param {sqlite3.Database} db
+ * @param {string} sql
+ * @returns {Promise<any[]>}
+ */
 function all(db, sql) {
   return new Promise((resolve, reject) => {
     db.all(sql, (err, rows) => {
@@ -43,6 +70,11 @@ function all(db, sql) {
   });
 }
 
+/**
+ * Close sqlite database connection.
+ * @param {sqlite3.Database} db
+ * @returns {Promise<void>}
+ */
 function close(db) {
   return new Promise((resolve, reject) => {
     db.close((err) => {
@@ -55,6 +87,11 @@ function close(db) {
   });
 }
 
+/**
+ * Read table and column metadata and format it as a human-readable schema.
+ * @param {sqlite3.Database} db
+ * @returns {Promise<string>}
+ */
 async function getDatabaseSchema(db) {
   const tables = await all(db, "SELECT name FROM sqlite_master WHERE type='table';");
   const schemaLines = [];
@@ -85,6 +122,8 @@ async function getDatabaseSchema(db) {
  *   - any float     → REAL
  *   - Date objects  → TEXT  (stored as ISO-8601 string)
  *   - anything else → TEXT
+ * @param {unknown[]} values
+ * @returns {"INTEGER" | "REAL" | "TEXT"}
  */
 function inferSqliteType(values) {
   let hasFloat = false;
@@ -102,6 +141,10 @@ function inferSqliteType(values) {
   if (!hasFloat && values.every((v) => v === undefined || v === null || v === "")) return "TEXT";
   return hasFloat ? "REAL" : "INTEGER";
 }
+/**
+ * Parse CSV data, recreate the SQLite table, insert rows and write schema.
+ * @returns {Promise<void>}
+ */
 
 async function main() {
   const rawCsv = fs.readFileSync(CSV_PATH, "utf8");
