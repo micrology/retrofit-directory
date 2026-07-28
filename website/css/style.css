@@ -559,3 +559,50 @@ main.main-content {
   font-size: 0.875rem;
   margin: 0;
 }
+
+/* Authentication Modal for admin.html*/
+body.auth-locked main,
+body.auth-locked footer {
+  filter: brightness(0.45);
+  pointer-events: none;
+  user-select: none;
+}
+.auth-modal-overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  z-index: 1000;
+}
+.auth-modal {
+  pointer-events: auto;
+  width: min(92vw, 420px);
+  background: #fff;
+  border-radius: 14px;
+  padding: 1.25rem;
+  box-shadow: 0 16px 45px rgba(0, 0, 0, 0.28);
+}
+.auth-modal h2 {
+  margin: 0 0 0.5rem;
+  font-size: 1.2rem;
+}
+.auth-modal p {
+  margin: 0 0 0.9rem;
+}
+.auth-modal-row {
+  display: flex;
+  gap: 0.5rem;
+}
+.auth-modal-row input {
+  flex: 1;
+}
+.auth-error {
+  margin-top: 0.65rem;
+  color: #b42318;
+  display: none;
+}
+.auth-error.visible {
+  display: block;
+}

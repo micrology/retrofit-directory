@@ -130,5 +130,61 @@
         </p>
       </div>
     </footer>
+
+    <div id="authModalOverlay" class="auth-modal-overlay" aria-hidden="false">
+      <div class="auth-modal" role="dialog" aria-modal="true" aria-labelledby="authModalTitle">
+        <h2 id="authModalTitle">Admin access</h2>
+        <p>Please enter the password to continue.</p>
+        <div class="auth-modal-row">
+          <input
+            id="authPasswordInput"
+            type="password"
+            placeholder="Password"
+            autocomplete="off"
+          />
+          <button id="authSubmitBtn" type="button">Unlock</button>
+        </div>
+        <p id="authErrorMessage" class="auth-error">Incorrect password. Please try again.</p>
+      </div>
+    </div>
+
+    <script>
+      (() => {
+        // Intentionally simple deterrent only.
+        const PASSWORD = "retrofit-admin";
+
+        const body = document.body;
+        const overlay = document.getElementById("authModalOverlay");
+        const input = document.getElementById("authPasswordInput");
+        const submitBtn = document.getElementById("authSubmitBtn");
+        const errorMessage = document.getElementById("authErrorMessage");
+
+        const unlock = () => {
+          body.classList.remove("auth-locked");
+          overlay.remove();
+        };
+
+        const attemptUnlock = () => {
+          if (input.value === PASSWORD) {
+            unlock();
+            return;
+          }
+
+          errorMessage.classList.add("visible");
+          input.value = "";
+          input.focus();
+        };
+
+        body.classList.add("auth-locked");
+        input.focus();
+
+        submitBtn.addEventListener("click", attemptUnlock);
+        input.addEventListener("keydown", (event) => {
+          if (event.key === "Enter") {
+            attemptUnlock();
+          }
+        });
+      })();
+    </script>
   </body>
 </html>
