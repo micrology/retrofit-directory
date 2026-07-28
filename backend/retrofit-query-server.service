@@ -1,0 +1,24 @@
+# /etc/systemd/system/retrofit-query-server.service 
+# sets up the Retrofit Directory backend query responder
+#
+# after installing, run
+#   sudo systemctl daemon-reload
+#   sudo systemctl restart retrofit-query-server
+
+[Unit]
+Description=Retrofit Directory backend query responder
+After=network.target
+
+[Service]
+Type=simple
+User=ec2-user
+ExecStart=/usr/bin/node /data/retrofit-directory/backend/query.mjs
+Environment='AWS_REGION=eu-west-2'
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=retrofit-query-server
+
+[Install]
+WantedBy=multi-user.target
