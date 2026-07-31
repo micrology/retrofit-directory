@@ -19,6 +19,34 @@ const SCHEMA_PATH = path.join(path.dirname(fileURLToPath(import.meta.url)), "dir
 const BEDROCK_REGION = "eu-west-2";
 const BEDROCK_MODEL_ID = "eu.anthropic.claude-haiku-4-5-20251001-v1:0";
 const CHEAP_MODEL_ID = "qwen.qwen3-235b-a22b-2507-v1:0";
+const CANONICAL_LLM_COLUMNS = [
+  "org_name",
+  "org_main_type",
+  "county",
+  "geographic_scope",
+  "operating_areas",
+  "main_mission_or_remit",
+  "retrofit_relevance",
+  "primary_activity",
+  "other_activities",
+  "specialisms",
+  "methods_or_skills",
+  "works_with_architects",
+  "website",
+  "contact_email",
+  "employee_count_band",
+];
+const OUT_OF_SCOPE_RESPONSE = "I can only answer questions about organisations in the Retrofit Directory. Please ask about organisations, locations, activities, specialisms, or types.";
+
+class UnsafeSqlError extends Error {
+  /**
+   * @param {string} sqlSnippet
+   */
+  constructor(sqlSnippet) {
+    super(`Unsafe or unexpected SQL generated: ${sqlSnippet}`);
+    this.name = "UnsafeSqlError";
+  }
+}
 
 process.title = 'retrofit-query-server'
 
@@ -175,6 +203,7 @@ export async function generateSqlFromQuery(userQuery) {
     - Use case-insensitive matching where appropriate (e.g., LIKE '%Manchester%') for text filters.
     - If the user asks for a count, use COUNT(*).
     - Prefer querying the canonical view orgs_llm when it is present in the schema; its columns are semantic aliases (e.g. org_name, county, org_main_type, works_with_architects) and should be preferred over long raw survey column names.
+    - If you reference any canonical alias column (e.g. org_name, org_main_type, county), you MUST query FROM orgs_llm (never FROM orgs).
     - Never select or filter on columns marked [EMPTY - no data]; they contain no values. For example, an organisation's "name" is the answer to the "name of the organisation" question column, NOT the empty recipient_first_name/recipient_last_name metadata columns.
     - Use the example values to map the user's terms to the correct column and its stored values. For multi-select questions, a populated cell (e.g. 'Directly'/'Indirectly') means the option was chosen; filter with "col" IS NOT NULL AND TRIM("col") != '' rather than assuming a 'Yes' value.
     - Disambiguation rule: if the user asks whether an organisation IS a type of organisation/persona (e.g. architect, engineer, local authority), use org_main_type (or the raw "main type" selected-choice column). Only use collaboration/audience columns such as works_with_architects when the user asks who the organisation works with.
@@ -185,6 +214,39 @@ export async function generateSqlFromQuery(userQuery) {
 
     User Question: "${userQuery}"
     SQL Query:`;
+
+  return invokeBedrock(prompt, 0.0);
+}
+
+/**
+ * Regenerate SQL using the previous SQL and SQLite error as corrective context.
+ * @param {string} userQuery
+ * @param {string} previousSql
+ * @param {string} sqliteError
+ * @returns {Promise<string>}
+ */
+export async function regenerateSqlFromError(userQuery, previousSql, sqliteError) {
+  const schema = readSchema();
+
+  const prompt = `You are fixing a failed SQLite SELECT query.
+
+    Return ONLY a corrected raw SQL SELECT query.
+
+    Rules:
+    - Only use SELECT statements. Never generate INSERT, UPDATE, DELETE, DROP, ALTER, or PRAGMA.
+    - Use the provided schema exactly.
+    - If you reference canonical alias columns (e.g. org_name, org_main_type, county), query FROM orgs_llm (not orgs).
+    - Never select or filter on columns marked [EMPTY - no data].
+    - Keep the corrected query semantically faithful to the original user question.
+
+    Schema:
+    ${schema}
+
+    User Question: "${userQuery}"
+    Previous SQL (failed): "${previousSql}"
+    SQLite Error: "${sqliteError}"
+
+    Corrected SQL Query:`;
 
   return invokeBedrock(prompt, 0.0);
 }
@@ -243,8 +305,32 @@ function validateSql(sql) {
   // Strip leading whitespace and block comments before checking the statement type.
   const stripped = sql.replace(/^(\s|\/\*.*?\*\/|--[^\n]*\n)*/s, '').trimStart();
   if (!/^SELECT\b/i.test(stripped)) {
-    throw new Error(`Unsafe or unexpected SQL generated: ${sql.slice(0, 120)}`);
+    throw new UnsafeSqlError(sql.slice(0, 120));
   }
+}
+
+/**
+ * Check whether generated SQL references canonical alias columns from orgs_llm.
+ * @param {string} sql
+ * @returns {boolean}
+ */
+function referencesCanonicalLlmColumns(sql) {
+  return CANONICAL_LLM_COLUMNS.some((column) => {
+    const escaped = column.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const pattern = new RegExp(`\\b${escaped}\\b`, "i");
+    return pattern.test(sql);
+  });
+}
+
+/**
+ * If canonical alias columns are used, make sure query targets orgs_llm.
+ * @param {string} sql
+ * @returns {string}
+ */
+function alignCanonicalColumnsToLlmView(sql) {
+  if (!referencesCanonicalLlmColumns(sql)) return sql;
+  if (/from\s+"?orgs_llm"?\b/i.test(sql)) return sql;
+  return sql.replace(/\bfrom\s+"?orgs"?\b/i, "FROM orgs_llm");
 }
 
 // Catch errors from middleware (e.g. PayloadTooLarge from express.json) and return clean JSON.
@@ -258,8 +344,9 @@ app.use((err, req, res, next) => {
 
 app.post('/api/query', async (req, res) => {
   try {
-    const userQuery = req.body.query;
-
+    const { messages } = req.body
+    const userQuery = messages[messages.length-1].content[0].query
+console.log('Received query:', userQuery)
     // Validate input type and length.
     if (typeof userQuery !== 'string' || !userQuery.trim()) {
       return res.status(400).json({ error: "Missing or invalid 'query' in request body" });
@@ -271,17 +358,53 @@ app.post('/api/query', async (req, res) => {
     // Sanitise: strip characters that could break prompt string delimiters.
     const safeQuery = userQuery.replace(/["\\]/g, ' ').trim();
 
-    const sqlQuery = await generateSqlFromQuery(safeQuery);
+    const generatedSqlQuery = await generateSqlFromQuery(safeQuery);
+    let sqlQuery = alignCanonicalColumnsToLlmView(generatedSqlQuery);
 
     // Reject anything that isn't a SELECT before it touches the database.
-    validateSql(sqlQuery);
+    try {
+      validateSql(sqlQuery);
+    } catch (error) {
+      if (error instanceof UnsafeSqlError) {
+        console.log('Out-of-scope or non-SQL query response:', { safeQuery, generatedSqlQuery });
+        return res.json({
+          response: OUT_OF_SCOPE_RESPONSE,
+          sources: [{ name: "Retrofit Directory", url: "https://retrofit-directory.org.uk" }],
+        });
+      }
+      throw error;
+    }
 
-    const rawResults = await queryDatabase(sqlQuery);
+    let rawResults;
+    try {
+      rawResults = await queryDatabase(sqlQuery);
+    } catch (dbError) {
+      const sqliteErrorText = dbError?.message || String(dbError);
+      const repairedSql = await regenerateSqlFromError(safeQuery, sqlQuery, sqliteErrorText);
+      sqlQuery = alignCanonicalColumnsToLlmView(repairedSql);
+      try {
+        validateSql(sqlQuery);
+      } catch (error) {
+        if (error instanceof UnsafeSqlError) {
+          console.log('Out-of-scope after SQL repair attempt:', { safeQuery, repairedSql });
+          return res.json({
+            response: OUT_OF_SCOPE_RESPONSE,
+            sources: [{ name: "Retrofit Directory", url: "https://retrofit-directory.org.uk" }],
+          });
+        }
+        throw error;
+      }
+      rawResults = await queryDatabase(sqlQuery);
+      console.log('Query repaired after initial SQLite error:', { safeQuery, sqliteErrorText, repairedSql: sqlQuery });
+    }
     const answer = await generateNaturalLanguageAnswer(safeQuery, sqlQuery, rawResults);
 
     // Return only the natural-language answer; SQL and raw rows are logged server-side only.
     console.log('Query processed:', { safeQuery, sqlQuery, rowCount: rawResults.length });
-    res.json({ answer });
+
+    /* Don't bother to send the source since so far the only source is the Dircetory.  Later, when we add more sources, we'll reinstate this */
+    //    res.json({ response: answer, sources: [{ name: "Retrofit Directory", url: "https://retrofit-directory.org.uk" }] });
+    res.json({ response: answer, sources: [] })
   } catch (error) {
     console.error('Error processing query:', error);
     res.status(500).json({ error: 'Internal Server Error' });
