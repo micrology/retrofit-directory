@@ -53,8 +53,8 @@ function initTextareaActions() {
 
     const isLocal =
         window.location.hostname === '127.0.0.1' || window.location.hostname === 'localhost'
-    const API_BASE_URL = isLocal ? 'http://localhost:5001' : 'https://retrofit-directory.org.uk/retrofit'
-    const IMAGE_BASE_URL = isLocal ? 'http://localhost:5001' : 'https://retrofit-directory.org.uk'
+    const API_BASE_URL = isLocal ? 'http://localhost:5001/api' : 'https://retrofit-directory.org.uk/retrofit'
+    const IMAGE_BASE_URL = isLocal ? 'http://localhost:5001/api' : 'https://retrofit-directory.org.uk/retrofit'
     
     async function sendMessage(prompt = '') {
         const message = prompt || userInput.value.trim()
@@ -67,7 +67,7 @@ function initTextareaActions() {
         overlay.style.display = 'block'
 
         try {
-            const response = await fetch(`${API_BASE_URL}/api/query`, {
+            const response = await fetch(`${API_BASE_URL}/query`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ messages: chatHistory }),
