@@ -19,6 +19,10 @@ const SCHEMA_PATH = path.join(path.dirname(fileURLToPath(import.meta.url)), "dir
 const BEDROCK_REGION = "eu-west-2";
 const BEDROCK_MODEL_ID = "eu.anthropic.claude-haiku-4-5-20251001-v1:0";
 const CHEAP_MODEL_ID = "qwen.qwen3-235b-a22b-2507-v1:0";
+const SQL_MAX_TOKENS = 300;
+const ANSWER_MAX_TOKENS = 2000;
+const WRAPPER_MAX_TOKENS = 220;
+const LONG_LIST_THRESHOLD = 25;
 const CANONICAL_LLM_COLUMNS = [
   "org_name",
   "org_main_type",
@@ -162,12 +166,13 @@ function readSchema() {
  * Invoke the configured Bedrock model with a single user prompt.
  * @param {string} prompt
  * @param {number} temperature
+ * @param {number} maxTokens
  * @returns {Promise<string>}
  */
-async function invokeBedrock(prompt, temperature) {
+async function invokeBedrock(prompt, temperature, maxTokens) {
   const body = JSON.stringify({
     anthropic_version: "bedrock-2023-05-31",
-    max_tokens: 300,
+    max_tokens: maxTokens,
     temperature,
     messages: [{ role: "user", content: prompt }],
   });
@@ -202,6 +207,7 @@ export async function generateSqlFromQuery(userQuery) {
     - Only use SELECT statements. Never generate INSERT, UPDATE, DELETE, or DROP statements.
     - Use case-insensitive matching where appropriate (e.g., LIKE '%Manchester%') for text filters.
     - If the user asks for a count, use COUNT(*).
+    - For list-style outputs (especially organisation names), use DISTINCT unless duplicates are explicitly requested.
     - Prefer querying the canonical view orgs_llm when it is present in the schema; its columns are semantic aliases (e.g. org_name, county, org_main_type, works_with_architects) and should be preferred over long raw survey column names.
     - If you reference any canonical alias column (e.g. org_name, org_main_type, county), you MUST query FROM orgs_llm (never FROM orgs).
     - Never select or filter on columns marked [EMPTY - no data]; they contain no values. For example, an organisation's "name" is the answer to the "name of the organisation" question column, NOT the empty recipient_first_name/recipient_last_name metadata columns.
@@ -215,7 +221,7 @@ export async function generateSqlFromQuery(userQuery) {
     User Question: "${userQuery}"
     SQL Query:`;
 
-  return invokeBedrock(prompt, 0.0);
+  return invokeBedrock(prompt, 0.0, SQL_MAX_TOKENS);
 }
 
 /**
@@ -235,6 +241,7 @@ export async function regenerateSqlFromError(userQuery, previousSql, sqliteError
     Rules:
     - Only use SELECT statements. Never generate INSERT, UPDATE, DELETE, DROP, ALTER, or PRAGMA.
     - Use the provided schema exactly.
+    - For list-style outputs (especially organisation names), use DISTINCT unless duplicates are explicitly requested.
     - If you reference canonical alias columns (e.g. org_name, org_main_type, county), query FROM orgs_llm (not orgs).
     - Never select or filter on columns marked [EMPTY - no data].
     - Keep the corrected query semantically faithful to the original user question.
@@ -292,7 +299,88 @@ export async function generateNaturalLanguageAnswer(userQuery, sqlQuery, rawResu
 
     Natural Language Answer:`;
 
-  return invokeBedrock(prompt, 0.3);
+  return invokeBedrock(prompt, 0.3, ANSWER_MAX_TOKENS);
+}
+
+/**
+ * Build deterministic facts for cases where exactness should not depend on LLM generation.
+ * @param {any[][]} rawResults
+ * @returns {{ kind: "count", count: number } | { kind: "long_list", count: number, items: string[] } | null}
+ */
+function buildDeterministicFacts(rawResults) {
+  if (!Array.isArray(rawResults) || rawResults.length === 0) return null;
+  if (!rawResults.every((row) => Array.isArray(row) && row.length === 1)) return null;
+
+  const values = rawResults.map((row) => row[0]);
+  const allNumeric = values.every((value) => typeof value === "number");
+  if (rawResults.length === 1 && allNumeric) {
+    return { kind: "count", count: values[0] };
+  }
+
+  if (rawResults.length < LONG_LIST_THRESHOLD) return null;
+  const items = values.map((value) => {
+    if (value === null || value === undefined || String(value).trim() === "") return "(blank)";
+    return String(value).trim();
+  });
+  return { kind: "long_list", count: rawResults.length, items };
+}
+
+/**
+ * Generate a friendly wrapper around deterministic facts while preserving exactness.
+ * @param {string} userQuery
+ * @param {{ kind: "count", count: number } | { kind: "long_list", count: number, items: string[] }} deterministicFacts
+ * @returns {Promise<string>}
+ */
+async function generateDeterministicWrappedAnswer(userQuery, deterministicFacts) {
+  if (deterministicFacts.kind === "count") {
+    const count = deterministicFacts.count;
+    const prompt = `Write one concise, friendly sentence that answers the user's question.
+
+Rules:
+- You MUST keep the exact count as ${count}.
+- Do not change the number or add uncertainty.
+- Do not mention SQL or databases unless the user explicitly asked about them.
+- Output only the final sentence for the end user (no preface, no labels, no quotes).
+
+User question: "${userQuery}"
+Exact count: ${count}
+Sentence:`;
+
+    const wrapped = (await invokeBedrock(prompt, 0.2, WRAPPER_MAX_TOKENS))
+      .replace(/^["'“”]+|["'“”]+$/g, "")
+      .trim();
+    const countPattern = new RegExp(`\\b${count}\\b`);
+    if (countPattern.test(wrapped)) return wrapped;
+    return `There are ${count} matching records.`;
+  }
+
+  const count = deterministicFacts.count;
+  const prompt = `Write a short friendly introduction (1-2 sentences) for a list answer.
+
+Rules:
+- You MUST keep the exact count as ${count}.
+- Mention that the full list follows.
+- Do not include item names in the introduction.
+- Do not mention SQL or databases unless the user explicitly asked about them.
+- Output only the final introduction text for the end user (no preface like "Here is...", no labels, no quotes).
+
+User question: "${userQuery}"
+Exact count: ${count}
+Introduction:`;
+
+  const intro = (await invokeBedrock(prompt, 0.2, WRAPPER_MAX_TOKENS))
+    .replace(/^["'“”]+|["'“”]+$/g, "")
+    .replace(/^here(?:'s| is)\b[^:]*:\s*/i, "")
+    .replace(/^introduction:\s*/i, "")
+    .replace(/^sentence:\s*/i, "")
+    .trim();
+  const countPattern = new RegExp(`\\b${count}\\b`);
+  const safeIntro = countPattern.test(intro)
+    ? intro
+    : `There are ${count} matching records. The full list is below.`;
+
+  const lines = deterministicFacts.items.map((item, index) => `${index + 1}. ${item}`);
+  return `${safeIntro}\n\n${lines.join("\n")}`;
 }
 
 // Validate that an LLM-generated SQL string is a safe SELECT-only statement.
@@ -333,6 +421,19 @@ function alignCanonicalColumnsToLlmView(sql) {
   return sql.replace(/\bfrom\s+"?orgs"?\b/i, "FROM orgs_llm");
 }
 
+/**
+ * Add DISTINCT for simple organisation-name listing queries to suppress duplicate names.
+ * @param {string} sql
+ * @returns {string}
+ */
+function enforceDistinctForOrgNameLists(sql) {
+  if (/\bselect\s+distinct\b/i.test(sql)) return sql;
+  if (/\bcount\s*\(/i.test(sql)) return sql;
+  if (!/\bselect\s+org_name\b/i.test(sql)) return sql;
+  if (!/\bfrom\s+"?orgs_llm"?\b/i.test(sql)) return sql;
+  return sql.replace(/\bselect\s+/i, "SELECT DISTINCT ");
+}
+
 // Catch errors from middleware (e.g. PayloadTooLarge from express.json) and return clean JSON.
 app.use((err, req, res, next) => {
   const status = err.status || err.statusCode || 500;
@@ -360,6 +461,7 @@ console.log('Received query:', userQuery)
 
     const generatedSqlQuery = await generateSqlFromQuery(safeQuery);
     let sqlQuery = alignCanonicalColumnsToLlmView(generatedSqlQuery);
+    sqlQuery = enforceDistinctForOrgNameLists(sqlQuery);
 
     // Reject anything that isn't a SELECT before it touches the database.
     try {
@@ -382,6 +484,7 @@ console.log('Received query:', userQuery)
       const sqliteErrorText = dbError?.message || String(dbError);
       const repairedSql = await regenerateSqlFromError(safeQuery, sqlQuery, sqliteErrorText);
       sqlQuery = alignCanonicalColumnsToLlmView(repairedSql);
+      sqlQuery = enforceDistinctForOrgNameLists(sqlQuery);
       try {
         validateSql(sqlQuery);
       } catch (error) {
@@ -397,10 +500,13 @@ console.log('Received query:', userQuery)
       rawResults = await queryDatabase(sqlQuery);
       console.log('Query repaired after initial SQLite error:', { safeQuery, sqliteErrorText, repairedSql: sqlQuery });
     }
-    const answer = await generateNaturalLanguageAnswer(safeQuery, sqlQuery, rawResults);
+    const deterministicFacts = buildDeterministicFacts(rawResults);
+    const answer = deterministicFacts
+      ? await generateDeterministicWrappedAnswer(safeQuery, deterministicFacts)
+      : await generateNaturalLanguageAnswer(safeQuery, sqlQuery, rawResults);
 
     // Return only the natural-language answer; SQL and raw rows are logged server-side only.
-    console.log('Query processed:', { safeQuery, sqlQuery, rowCount: rawResults.length });
+    console.log('Query processed:', { safeQuery, sqlQuery, rowCount: rawResults.length, SQLresults: rawResults });
 
     /* Don't bother to send the source since so far the only source is the Dircetory.  Later, when we add more sources, we'll reinstate this */
     //    res.json({ response: answer, sources: [{ name: "Retrofit Directory", url: "https://retrofit-directory.org.uk" }] });

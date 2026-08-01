@@ -12,7 +12,7 @@ populated from a Qualtrics survey export.
 
 ## Architecture
 
-```
+``` bash
 Browser
   │  HTTPS POST /retrofit/query
   ▼
@@ -28,7 +28,7 @@ SQLite database      AWS Bedrock (Claude Haiku)
 ```
 
 | Layer | File / location |
-|---|---|
+| --- | --- |
 | Static website | `website/` served by Apache from `DocumentRoot /data/retrofit-directory` |
 | Apache config | `/etc/httpd/conf.d/retrofit-directory.conf` |
 | Node.js backend | `backend/query.mjs` |
@@ -58,11 +58,16 @@ npm install
 
 ### Build the database
 
-Import the Qualtrics CSV export and generate the schema annotation file:
+Import the Qualtrics Excel or CSV export and generate the schema annotation file:
 
 ```bash
-node backend/csvToDB.mjs
+node backend/csvToDB.mjs [path to Qualtrics export file; default: ../directory.csv]
 ```
+
+The import step now also creates a canonical SQLite view `orgs_llm` with
+semantic aliases (for example `org_name`, `org_main_type`, `county`) and
+writes enriched `directory.schema` annotations including per-column population
+counts, sample values, and `[EMPTY - no data]` markers.
 
 ### Run as a systemd service
 
@@ -91,34 +96,41 @@ node backend/query.mjs
 
 ### `POST /retrofit/query` (via Apache) or `POST /api/query` (direct)
 
-**Request**
+#### Request
 
 ```json
-{ "query": "How many organisations are based in Bristol?" }
+{
+  "messages": [
+    { "role": "user", "content": [{ "query": "How many organisations are based in Bristol?" }] }
+  ]
+}
 ```
 
 Constraints enforced server-side:
 
 | Constraint | Value |
-|---|---|
-| `query` must be a string | 400 if missing or wrong type |
-| Maximum query length | 500 characters |
+| --- | --- |
+| `messages[messages.length-1].content[0].query` must be a string | 400 if missing or wrong type |
+| Maximum `query` length | 500 characters |
 | Maximum request body | 8 KB |
 | Rate limit | 20 requests per IP per minute |
 
-**Response (success)**
+#### Response (success)
 
 ```json
-{ "answer": "There are 4 organisations based in Bristol: …" }
+{ "response": "There are 4 organisations based in Bristol: …", "sources": [] }
 ```
 
-Only the natural-language `answer` is returned. The generated SQL query and
+Only the natural-language `response` is returned to users. The generated SQL and
 raw database rows are logged server-side only and never sent to the client.
 
-**Error responses**
+Out-of-scope questions (for example non-directory topics) return a friendly
+scope message in `response` rather than failing with a 500.
+
+#### Error responses
 
 | HTTP status | Meaning |
-|---|---|
+| --- | --- |
 | 400 | Missing, wrong-type, empty, or over-length query |
 | 413 | Request body exceeds 8 KB |
 | 429 | Rate limit exceeded |
@@ -128,7 +140,7 @@ raw database rows are logged server-side only and never sent to the client.
 
 ## Security hardening
 
-The following controls were added in July 2026 after a security review.
+The following controls are currently implemented.
 
 ### Input validation
 
@@ -153,11 +165,39 @@ The SQL string returned by the LLM is validated before it is executed:
 - The remaining text must begin with the keyword `SELECT` (word-boundary
   match, case-insensitive)
 - Any other statement (`DROP`, `INSERT`, `UPDATE`, `DELETE`, etc.) causes the
-  request to fail with a 500 and the SQL is logged server-side for review
+  request to return a friendly out-of-scope response and the SQL is logged
+  server-side for review
 
 This is a defence-in-depth measure: even if an attacker bypasses the prompt
 sanitisation and manipulates the LLM into generating a destructive statement,
 it will never reach the database.
+
+### SQL reliability guardrails
+
+To reduce schema-mapping and runtime failures in text-to-SQL generation:
+
+- SQL prompts prefer the canonical `orgs_llm` view aliases.
+- If canonical alias columns are used but `FROM orgs` is generated, the backend
+  rewrites the query to `FROM orgs_llm`.
+- For simple organisation-name list queries, `SELECT DISTINCT` is enforced to
+  suppress duplicate names unless duplicates are explicitly requested.
+- If the first SQL execution fails, the backend performs one regeneration pass
+  using the SQLite error message as feedback, then retries once.
+
+### Deterministic facts + LLM wrapper responses
+
+For correctness-critical answer shapes, the backend does not rely on free-form
+LLM summarisation:
+
+- Single-value numeric count results and long single-column lists are converted
+  into deterministic fact payloads first.
+- A constrained LLM wrapper then produces a short, user-friendly introduction
+  while preserving exact counts.
+- If wrapper output fails count-consistency checks, deterministic fallback text
+  is returned.
+
+This avoids mismatches such as SQL row counts diverging from natural-language
+totals in list outputs.
 
 ### Read-only database connection
 
@@ -179,14 +219,14 @@ Apache TLS proxy.
 
 ### CORS policy
 
-CORS is restricted to the production origins:
+CORS is currently restricted to the following allowed origins:
 
 - `https://retrofit-directory.org.uk`
-- `https://www.retrofit-directory.org.uk`
+- `http://localhost`
+- `http://127.0.0.1`
 
-`http://localhost` and `http://127.0.0.1` (which were present in the original
-code) have been removed to avoid inadvertently permitting cross-origin requests
-from arbitrary developer machines.
+`https://www.retrofit-directory.org.uk` is not currently in the backend allow
+list and should be added if that host is expected to call `/api/query`.
 
 ### Clean error responses
 
