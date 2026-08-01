@@ -445,9 +445,19 @@ app.use((err, req, res, next) => {
 
 app.post('/api/query', async (req, res) => {
   try {
-    const { messages } = req.body
-    const userQuery = messages[messages.length-1].content[0].query
-console.log('Received query:', userQuery)
+    // Validate the request envelope before extracting the query, so that a
+    // malformed body yields a 400 rather than a TypeError surfaced as a 500.
+    const messages = req.body?.messages;
+    if (!Array.isArray(messages) || messages.length === 0) {
+      return res.status(400).json({ error: "Invalid request body: 'messages' must be a non-empty array" });
+    }
+    const lastContent = messages[messages.length - 1]?.content;
+    if (!Array.isArray(lastContent) || lastContent.length === 0) {
+      return res.status(400).json({ error: "Invalid request body: last message must have a non-empty 'content' array" });
+    }
+    const userQuery = lastContent[0]?.query;
+    console.log('Received query:', userQuery);
+
     // Validate input type and length.
     if (typeof userQuery !== 'string' || !userQuery.trim()) {
       return res.status(400).json({ error: "Missing or invalid 'query' in request body" });
