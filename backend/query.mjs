@@ -185,7 +185,6 @@ async function invokeBedrock(prompt, temperature, maxTokens) {
       body,
     })
   );
-
   const responseBody = JSON.parse(new TextDecoder("utf-8").decode(response.body));
   return responseBody.content[0].text.trim();
 }
@@ -255,7 +254,7 @@ export async function regenerateSqlFromError(userQuery, previousSql, sqliteError
 
     Corrected SQL Query:`;
 
-  return invokeBedrock(prompt, 0.0);
+  return invokeBedrock(prompt, 0.0, SQL_MAX_TOKENS);
 }
 
 /**
@@ -439,7 +438,7 @@ app.use((err, req, res, next) => {
   const status = err.status || err.statusCode || 500;
   const message = status === 413 ? 'Request body too large'
     : status < 500 ? err.message
-    : 'Internal Server Error';
+      : 'Internal Server Error';
   res.status(status).json({ error: message });
 });
 
