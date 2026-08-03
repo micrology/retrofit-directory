@@ -622,6 +622,15 @@ app.post('/api/query', async (req, res) => {
   }
 });
 
+app.post('/api/observe', async (req, res) => {
+  try {
+    res.json({ response: 'admin results' })
+  } catch (error) {
+    console.error('Error processing query:', error);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
 /**
  * time stamp and output message to console
  * @param {string} message

@@ -64,6 +64,7 @@ function initTextareaActions() {
         chatHistory.push({ role: 'user', content: [{ query: message }] })
         appendMessage('user', message)
         userInput.value = ''
+        userInput.placeholder= 'Ask a follow up or new question...'
         overlay.style.display = 'block'
 
         try {
@@ -172,6 +173,25 @@ function initTextareaActions() {
     }
 }
 
+async function populateAdminContent() {
+    try {
+        const adminContentDiv = document.getElementById('admin-content')
+        if (!adminContentDiv) return
+
+        const response = await fetch(`${API_BASE_URL}/observe`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ content: 'admin request' }),
+        })
+
+        const data = await response.json()
+        // Populate the admin content div with the data received
+        adminContentDiv.innerHTML = `<pre>${JSON.stringify(data, null, 2)}</pre>`
+    } catch(error) {
+            console.error('Error fetching admin data:', error)
+            adminContentDiv.innerHTML = `<p class="error">Failed to load admin data.</p>`
+        }
+}
 /**
  * Cookie Popup Consent Management
  */

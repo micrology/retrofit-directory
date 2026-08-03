@@ -62,7 +62,11 @@
       <!-- Hero Banner -->
       <section class="hero-section">
         <div class="hero-image-wrapper">
-          <img src="assets/curacao-cottage-colored-in-a-row-preview.jpg" alt="Admin Portal and Database Metrics" class="hero-image" />
+          <img
+            src="assets/curacao-cottage-colored-in-a-row-preview.jpg"
+            alt="Admin Portal and Database Metrics"
+            class="hero-image"
+          />
           <div class="hero-overlay">
             <h1 class="hero-title">Admin Management Portal</h1>
             <p class="hero-subtitle">
@@ -79,7 +83,7 @@
       </div>
 
       <div class="grid-cols-2" style="margin-bottom: 2rem">
-        <div class="info-card">
+        <div class="info-card" id="admin-content">
           <h3>Database Status</h3>
           <p>
             Lorem ipsum dolor sit amet, consectetur adipiscing elit. Directory Database:
@@ -136,12 +140,7 @@
         <h2 id="authModalTitle">Admin access</h2>
         <p>Please enter the password to continue.</p>
         <div class="auth-modal-row">
-          <input
-            id="authPasswordInput"
-            type="password"
-            placeholder="Password"
-            autocomplete="off"
-          />
+          <input id="authPasswordInput" type="password" placeholder="Password" autocomplete="off" />
           <button id="authSubmitBtn" type="button">Unlock</button>
         </div>
         <p id="authErrorMessage" class="auth-error">Incorrect password. Please try again.</p>
@@ -149,42 +148,70 @@
     </div>
 
     <script>
-      (() => {
+      ;(() => {
+        //Don't allow access to the page without a password
         // Intentionally simple deterrent only.
-        const PASSWORD = "retrofit-admin";
+        const PASSWORD = 'retrofit-admin'
 
-        const body = document.body;
-        const overlay = document.getElementById("authModalOverlay");
-        const input = document.getElementById("authPasswordInput");
-        const submitBtn = document.getElementById("authSubmitBtn");
-        const errorMessage = document.getElementById("authErrorMessage");
+        const body = document.body
+        const overlay = document.getElementById('authModalOverlay')
+        const input = document.getElementById('authPasswordInput')
+        const submitBtn = document.getElementById('authSubmitBtn')
+        const errorMessage = document.getElementById('authErrorMessage')
 
         const unlock = () => {
-          body.classList.remove("auth-locked");
-          overlay.remove();
-        };
+          body.classList.remove('auth-locked')
+          overlay.remove()
+          populateAdminContent()
+        }
 
         const attemptUnlock = () => {
           if (input.value === PASSWORD) {
-            unlock();
-            return;
+            unlock()
+            return
           }
 
-          errorMessage.classList.add("visible");
-          input.value = "";
-          input.focus();
-        };
+          errorMessage.classList.add('visible')
+          input.value = ''
+          input.focus()
+        }
 
-        body.classList.add("auth-locked");
-        input.focus();
+        body.classList.add('auth-locked')
+        input.focus()
 
-        submitBtn.addEventListener("click", attemptUnlock);
-        input.addEventListener("keydown", (event) => {
-          if (event.key === "Enter") {
-            attemptUnlock();
+        submitBtn.addEventListener('click', attemptUnlock)
+        input.addEventListener('keydown', (event) => {
+          if (event.key === 'Enter') {
+            attemptUnlock()
           }
-        });
-      })();
+        })
+
+        async function populateAdminContent() {
+          const isLocal =
+            window.location.hostname === '127.0.0.1' || window.location.hostname === 'localhost'
+          const API_BASE_URL = isLocal
+            ? 'http://localhost:5001/api'
+            : 'https://retrofit-directory.org.uk/retrofit'
+
+          try {
+            const adminContentDiv = document.getElementById('admin-content')
+            if (!adminContentDiv) return
+
+            const response = await fetch(`${API_BASE_URL}/observe`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ content: 'admin request' }),
+            })
+
+            const data = await response.json()
+            // Populate the admin content div with the data received
+            adminContentDiv.innerHTML = `<pre>${JSON.stringify(data, null, 2)}</pre>`
+          } catch (error) {
+            console.error('Error fetching admin data:', error)
+            adminContentDiv.innerHTML = `<p class="error">Failed to load admin data.</p>`
+          }
+        }
+      })()
     </script>
   </body>
 </html>
