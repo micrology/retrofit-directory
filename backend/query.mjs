@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import sqlite3 from "sqlite3";
-import { BedrockRuntimeClient, InvokeModelCommand } from "@aws-sdk/client-bedrock-runtime";
+import { BedrockRuntimeClient, ConverseCommand } from "@aws-sdk/client-bedrock-runtime";
 import { createInterface } from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
 import express from 'express'
@@ -14,6 +14,7 @@ import rateLimit from 'express-rate-limit'
  * It uses Bedrock-hosted models to generate SQL and natural-language answers.
  */
 
+const VERBOSE = true;  // set to false to suppress console logging of queries and results
 const DB_PATH = path.join(path.dirname(fileURLToPath(import.meta.url)), "directory.db");
 const SCHEMA_PATH = path.join(path.dirname(fileURLToPath(import.meta.url)), "directory.schema");
 const BEDROCK_REGION = "eu-west-2";
@@ -22,6 +23,10 @@ const CHEAP_MODEL_ID = "qwen.qwen3-235b-a22b-2507-v1:0";
 const SQL_MAX_TOKENS = 300;
 const ANSWER_MAX_TOKENS = 2000;
 const WRAPPER_MAX_TOKENS = 220;
+const REFORMULATE_MAX_TOKENS = 120;
+const MAX_HISTORY_TURNS = 6;
+const MAX_QUERY_LENGTH = 500;
+const MAX_QUERY_LENGTH_WITH_CONTEXT = 1000;
 const LONG_LIST_THRESHOLD = 25;
 const CANONICAL_LLM_COLUMNS = [
   "org_name",
@@ -163,30 +168,38 @@ function readSchema() {
 }
 
 /**
- * Invoke the configured Bedrock model with a single user prompt.
+ * Invoke a Bedrock model with a single user prompt via the Converse API.
+ *
+ * Converse normalises the request/response shape across model families, so the
+ * same helper works for both the Anthropic and Qwen models configured above.
  * @param {string} prompt
  * @param {number} temperature
  * @param {number} maxTokens
+ * @param {string} [modelId=BEDROCK_MODEL_ID]
  * @returns {Promise<string>}
  */
-async function invokeBedrock(prompt, temperature, maxTokens) {
-  const body = JSON.stringify({
-    anthropic_version: "bedrock-2023-05-31",
-    max_tokens: maxTokens,
-    temperature,
-    messages: [{ role: "user", content: prompt }],
-  });
-
+async function invokeBedrock(prompt, temperature, maxTokens, modelId = BEDROCK_MODEL_ID) {
   const response = await bedrock.send(
-    new InvokeModelCommand({
-      modelId: BEDROCK_MODEL_ID,
-      contentType: "application/json",
-      accept: "application/json",
-      body,
+    new ConverseCommand({
+      modelId,
+      messages: [{ role: "user", content: [{ text: prompt }] }],
+      inferenceConfig: { maxTokens, temperature },
     })
   );
-  const responseBody = JSON.parse(new TextDecoder("utf-8").decode(response.body));
-  return responseBody.content[0].text.trim();
+
+  const { inputTokens, outputTokens } = response.usage ?? {};
+  logAPICalls(`Bedrock ${modelId}: ${inputTokens} input tokens, ${outputTokens} output tokens`);
+
+  // Concatenate text blocks and ignore any non-text blocks (e.g. reasoning content).
+  const text = (response.output?.message?.content ?? [])
+    .map((block) => block?.text ?? "")
+    .join("")
+    .trim();
+
+  if (!text) {
+    throw new Error(`Empty response from Bedrock model ${modelId} (stopReason: ${response.stopReason})`);
+  }
+  return text;
 }
 
 /**
@@ -442,6 +455,83 @@ app.use((err, req, res, next) => {
   res.status(status).json({ error: message });
 });
 
+/**
+ * Extract the plain text of a chat message, tolerating both the user shape
+ * (`content: [{ query }]`) and the assistant shape (`content: [{ text }]`).
+ * @param {any} message
+ * @returns {string}
+ */
+function extractMessageText(message) {
+  const content = message?.content;
+  if (typeof content === "string") return content.trim();
+  if (!Array.isArray(content)) return "";
+  return content
+    .map((block) => (typeof block === "string" ? block : block?.query ?? block?.text ?? ""))
+    .filter(Boolean)
+    .join(" ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/**
+ * Render prior turns as a plain-text transcript for the reformulation prompt.
+ * @param {any[]} messages Full history, including the message being answered.
+ * @returns {string}
+ */
+function formatConversationTranscript(messages) {
+  return messages
+    .slice(0, -1)
+    .slice(-MAX_HISTORY_TURNS)
+    .map((message) => {
+      const text = extractMessageText(message);
+      if (!text) return "";
+      return `${message?.role === "assistant" ? "Assistant" : "User"}: ${text}`;
+    })
+    .filter(Boolean)
+    .join("\n");
+}
+
+/**
+ * Rephrase the user's query into a standalone question that carries context from
+ * previous turns (e.g. "and how many in Manchester" becomes a full question).
+ * Uses the cheaper Qwen model, and falls back to the original query on failure.
+ * @param {any[]} messages Full conversation history from the request body.
+ * @param {string} lastUserMessage The latest user query.
+ * @returns {Promise<string>}
+ */
+async function reformulateUserQueryToIncludePreviousContext(messages, lastUserMessage) {
+  const transcript = formatConversationTranscript(messages);
+  if (!transcript) return lastUserMessage;
+
+  const prompt = `Rewrite the user's latest question as a single standalone question about a directory of UK retrofit organisations.
+
+    Rules:
+    - Resolve pronouns and elliptical references (e.g. "and in Manchester?") using the conversation below.
+    - Preserve the user's intent exactly; do not answer the question, add filters, or invent details.
+    - If the latest question is already self-contained, return it unchanged.
+    - Output ONLY the rewritten question on a single line, with no preface, labels, quotes, or explanation.
+
+    Conversation so far:
+    ${transcript}
+
+    Latest question: "${lastUserMessage}"
+    Standalone question:`;
+
+  try {
+    const reformulated = (await invokeBedrock(prompt, 0.0, REFORMULATE_MAX_TOKENS, CHEAP_MODEL_ID))
+      .replace(/<think>[\s\S]*?<\/think>/gi, "")
+      .replace(/^["'“”]+|["'“”]+$/g, "")
+      .replace(/\s+/g, " ")
+      .trim();
+
+    if (!reformulated || reformulated.length > MAX_QUERY_LENGTH_WITH_CONTEXT) return lastUserMessage;
+    return reformulated;
+  } catch (error) {
+    logAPICalls(`Reformulation failed, falling back to the original query: ${error?.message || error}`);
+    return lastUserMessage;
+  }
+}
+
 app.post('/api/query', async (req, res) => {
   try {
     // Validate the request envelope before extracting the query, so that a
@@ -454,15 +544,21 @@ app.post('/api/query', async (req, res) => {
     if (!Array.isArray(lastContent) || lastContent.length === 0) {
       return res.status(400).json({ error: "Invalid request body: last message must have a non-empty 'content' array" });
     }
-    const userQuery = lastContent[0]?.query;
-    console.log('Received query:', userQuery);
+    let userQuery = lastContent[0]?.query;
+    logAPICalls('Received query:', userQuery);
 
-    // Validate input type and length.
+    // Validate input type and length before spending a model call on it.
     if (typeof userQuery !== 'string' || !userQuery.trim()) {
       return res.status(400).json({ error: "Missing or invalid 'query' in request body" });
     }
-    if (userQuery.length > 500) {
-      return res.status(400).json({ error: "Query too long (max 500 characters)" });
+    if (userQuery.length > MAX_QUERY_LENGTH) {
+      return res.status(400).json({ error: `Query too long (max ${MAX_QUERY_LENGTH} characters)` });
+    }
+
+    // If there is previous context, reformulate the user's query to include it.
+    if (messages.length > 1) {
+      userQuery = await reformulateUserQueryToIncludePreviousContext(messages, userQuery);
+      logAPICalls('Reformulated query with context:', userQuery);
     }
 
     // Sanitise: strip characters that could break prompt string delimiters.
@@ -477,7 +573,7 @@ app.post('/api/query', async (req, res) => {
       validateSql(sqlQuery);
     } catch (error) {
       if (error instanceof UnsafeSqlError) {
-        console.log('Out-of-scope or non-SQL query response:', { safeQuery, generatedSqlQuery });
+        logAPICalls('Out-of-scope or non-SQL query response:', { safeQuery, generatedSqlQuery });
         return res.json({
           response: OUT_OF_SCOPE_RESPONSE,
           sources: [{ name: "Retrofit Directory", url: "https://retrofit-directory.org.uk" }],
@@ -498,7 +594,7 @@ app.post('/api/query', async (req, res) => {
         validateSql(sqlQuery);
       } catch (error) {
         if (error instanceof UnsafeSqlError) {
-          console.log('Out-of-scope after SQL repair attempt:', { safeQuery, repairedSql });
+          logAPICalls('Out-of-scope after SQL repair attempt:', { safeQuery, repairedSql });
           return res.json({
             response: OUT_OF_SCOPE_RESPONSE,
             sources: [{ name: "Retrofit Directory", url: "https://retrofit-directory.org.uk" }],
@@ -507,7 +603,7 @@ app.post('/api/query', async (req, res) => {
         throw error;
       }
       rawResults = await queryDatabase(sqlQuery);
-      console.log('Query repaired after initial SQLite error:', { safeQuery, sqliteErrorText, repairedSql: sqlQuery });
+      logAPICalls('Query repaired after initial SQLite error:', { safeQuery, sqliteErrorText, repairedSql: sqlQuery });
     }
     const deterministicFacts = buildDeterministicFacts(rawResults);
     const answer = deterministicFacts
@@ -515,7 +611,7 @@ app.post('/api/query', async (req, res) => {
       : await generateNaturalLanguageAnswer(safeQuery, sqlQuery, rawResults);
 
     // Return only the natural-language answer; SQL and raw rows are logged server-side only.
-    console.log('Query processed:', { safeQuery, sqlQuery, rowCount: rawResults.length, SQLresults: rawResults });
+    logAPICalls('Query processed:', { safeQuery, sqlQuery, rowCount: rawResults.length, SQLresults: rawResults });
 
     /* Don't bother to send the source since so far the only source is the Dircetory.  Later, when we add more sources, we'll reinstate this */
     //    res.json({ response: answer, sources: [{ name: "Retrofit Directory", url: "https://retrofit-directory.org.uk" }] });
@@ -525,3 +621,14 @@ app.post('/api/query', async (req, res) => {
     res.status(500).json({ error: 'Internal Server Error' });
   }
 });
+
+/**
+ * time stamp and output message to console
+ * @param {string} message
+ * @param {...unknown} details Optional extra values to log alongside the message.
+ */
+function logAPICalls(message, ...details) {
+  if (!VERBOSE) return;
+  const timestamp = new Date().toLocaleString();
+  console.log(`[${timestamp}] ${message}`, ...details);
+}
