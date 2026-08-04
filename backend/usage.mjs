@@ -24,10 +24,11 @@ const USAGE_DB_PATH = path.join(path.dirname(fileURLToPath(import.meta.url)), "u
  * IMPORTANT: verify these against the AWS Bedrock pricing page for the region
  * in use before treating reported costs as authoritative. Token counts in the
  * database are raw, so corrected rates retroactively fix all reported costs.
+ * See https://aws.amazon.com/bedrock/pricing/
  */
 const MODEL_RATES_USD_PER_MTOK = {
-  "eu.anthropic.claude-haiku-4-5-20251001-v1:0": { input: 1.0, output: 5.0 },
-  "qwen.qwen3-235b-a22b-2507-v1:0": { input: 0.22, output: 0.88 },
+  "eu.anthropic.claude-haiku-4-5-20251001-v1:0": { input: 1.1, output: 5.5 },
+  "qwen.qwen3-235b-a22b-2507-v1:0": { input: 0.34, output: 1.37 },
 };
 const FALLBACK_RATE_USD_PER_MTOK = { input: 0, output: 0 };
 
