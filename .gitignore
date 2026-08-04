@@ -50,3 +50,8 @@ dist/
 .nuxt/
 .svelte-kit/
 
+
+# Usage/observability store (contains user queries)
+backend/usage.db
+backend/usage.db-wal
+backend/usage.db-shm

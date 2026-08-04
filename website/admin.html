@@ -70,7 +70,7 @@
           <div class="hero-overlay">
             <h1 class="hero-title">Admin Management Portal</h1>
             <p class="hero-subtitle">
-              Directory administration, payload management, data validation, and backend service
+              List user queries and answers; LLM tokens used and costs; and database version
               status.
             </p>
           </div>
@@ -78,18 +78,15 @@
       </section>
 
       <div class="page-header-card">
-        <h2 class="page-title">Administration Console</h2>
-        <p class="page-intro">In preparation</p>
+        <h2 class="page-title">Directory Console</h2>
+        <p class="page-intro">Here you will find statistics about the Directory and the questions people asked.</p>
       </div>
 
       <div class="grid-cols-2" style="margin-bottom: 2rem">
+        <!-- Populated by js/admin.mjs from POST /api/observe. Spans both grid
+             columns (see #admin-content in css/style.css) so the tables fit. -->
         <div class="info-card" id="admin-content">
-          <h3>Database Status</h3>
-          <p>
-            Lorem ipsum dolor sit amet, consectetur adipiscing elit. Directory Database:
-            <code>directory.db</code>
-            connected. Active records pending review: 24.
-          </p>
+          <p class="admin-note">Usage data loads once the console is unlocked.</p>
         </div>
         <div class="info-card">
           <h3>Backend Integration</h3>
@@ -147,71 +144,6 @@
       </div>
     </div>
 
-    <script>
-      ;(() => {
-        //Don't allow access to the page without a password
-        // Intentionally simple deterrent only.
-        const PASSWORD = 'retrofit-admin'
-
-        const body = document.body
-        const overlay = document.getElementById('authModalOverlay')
-        const input = document.getElementById('authPasswordInput')
-        const submitBtn = document.getElementById('authSubmitBtn')
-        const errorMessage = document.getElementById('authErrorMessage')
-
-        const unlock = () => {
-          body.classList.remove('auth-locked')
-          overlay.remove()
-          populateAdminContent()
-        }
-
-        const attemptUnlock = () => {
-          if (input.value === PASSWORD) {
-            unlock()
-            return
-          }
-
-          errorMessage.classList.add('visible')
-          input.value = ''
-          input.focus()
-        }
-
-        body.classList.add('auth-locked')
-        input.focus()
-
-        submitBtn.addEventListener('click', attemptUnlock)
-        input.addEventListener('keydown', (event) => {
-          if (event.key === 'Enter') {
-            attemptUnlock()
-          }
-        })
-
-        async function populateAdminContent() {
-          const isLocal =
-            window.location.hostname === '127.0.0.1' || window.location.hostname === 'localhost'
-          const API_BASE_URL = isLocal
-            ? 'http://localhost:5001/api'
-            : 'https://retrofit-directory.org.uk/retrofit'
-
-          try {
-            const adminContentDiv = document.getElementById('admin-content')
-            if (!adminContentDiv) return
-
-            const response = await fetch(`${API_BASE_URL}/observe`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ content: 'admin request' }),
-            })
-
-            const data = await response.json()
-            // Populate the admin content div with the data received
-            adminContentDiv.innerHTML = `<pre>${JSON.stringify(data, null, 2)}</pre>`
-          } catch (error) {
-            console.error('Error fetching admin data:', error)
-            adminContentDiv.innerHTML = `<p class="error">Failed to load admin data.</p>`
-          }
-        }
-      })()
-    </script>
+    <script type="module" src="js/admin.mjs"></script>
   </body>
 </html>

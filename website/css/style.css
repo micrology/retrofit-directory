@@ -561,6 +561,157 @@ main.main-content {
   margin: 0;
 }
 
+/* Admin Dashboard (admin.html) */
+
+/* The usage tables need the full page width, not one grid column. */
+#admin-content {
+  grid-column: 1 / -1;
+  overflow: hidden; /* contain the scrollable table wrappers */
+}
+.admin-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 1rem;
+}
+.admin-title {
+  color: var(--primary-color);
+  font-size: 1.2rem;
+  margin: 0;
+}
+.admin-note {
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  margin: 0 0 0.75rem 0;
+}
+.admin-error {
+  color: #b42318;
+  font-size: 0.9rem;
+  margin: 0.5rem 0;
+}
+
+/* Headline totals */
+.admin-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+.admin-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  padding: 0.75rem 0.9rem;
+  background-color: var(--accent-light);
+  border: 1px solid rgba(45, 122, 100, 0.25);
+  border-radius: var(--radius-sm);
+}
+.admin-stat-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+}
+.admin-stat-value {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--primary-color);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Sections */
+.admin-section {
+  margin-top: 1.5rem;
+}
+.admin-section-title {
+  color: var(--primary-color);
+  font-size: 1rem;
+  margin: 0 0 0.5rem 0;
+}
+
+/* Tables */
+.admin-table-wrap {
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  overflow-x: auto;
+}
+.admin-table-wrap.admin-table-scroll {
+  max-height: 420px;
+  overflow-y: auto;
+}
+.admin-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8125rem;
+  background-color: var(--surface-color);
+}
+.admin-table th,
+.admin-table td {
+  padding: 0.5rem 0.7rem;
+  text-align: left;
+  vertical-align: top;
+  border-bottom: 1px solid #eef2f6;
+}
+.admin-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background-color: var(--accent-light);
+  color: var(--primary-color);
+  font-weight: 600;
+  white-space: nowrap;
+  border-bottom: 1px solid var(--border-color);
+}
+.admin-table tbody tr:last-child td {
+  border-bottom: none;
+}
+.admin-table tbody tr:nth-child(even) {
+  background-color: #fbfcfd;
+}
+.admin-table tbody tr:hover {
+  background-color: var(--accent-light);
+}
+.admin-table .admin-numeric {
+  text-align: right;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.admin-table .admin-cell-mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.75rem;
+  overflow-wrap: anywhere;
+}
+.admin-table .admin-cell-when {
+  white-space: nowrap;
+  color: var(--text-muted);
+}
+
+/* Query/answer cells: clamp long text, full value available on hover. The clamp
+   lives on an inner div because -webkit-box would break <td> table layout. */
+.admin-table .admin-cell-text {
+  min-width: 200px;
+  max-width: 380px;
+}
+.admin-clamp {
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 768px) {
+  .admin-table .admin-cell-text {
+    max-width: 220px;
+  }
+}
+
 /* Authentication Modal for admin.html*/
 body.auth-locked main,
 body.auth-locked footer {

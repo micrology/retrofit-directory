@@ -9,6 +9,13 @@ import express from 'express'
 import cors from 'cors'
 import { createHttpTerminator } from 'http-terminator'
 import rateLimit from 'express-rate-limit'
+import {
+  initUsageStore,
+  withUsageCapture,
+  recordModelCall,
+  saveRequestLog,
+  getUsageSummary,
+} from './usage.mjs'
 /**
  * HTTP API for natural-language querying over the retrofit SQLite directory.
  * It uses Bedrock-hosted models to generate SQL and natural-language answers.
@@ -84,6 +91,10 @@ let httpTerminator // terminator instance
  * @returns {Promise<void>}
  */
 async function start() {
+  // Create/open usage.db up front so a misconfigured path fails loudly at boot
+  // rather than silently on the first query.
+  await initUsageStore()
+
   // Start the server
   server = app.listen(PORT, '127.0.0.1', () => {
     console.log(
@@ -175,10 +186,12 @@ function readSchema() {
  * @param {string} prompt
  * @param {number} temperature
  * @param {number} maxTokens
- * @param {string} [modelId=BEDROCK_MODEL_ID]
+ * @param {{ modelId?: string, stage?: string }} [options] `stage` labels the
+ *   call in the usage log (e.g. "sql", "answer") for per-stage cost attribution.
  * @returns {Promise<string>}
  */
-async function invokeBedrock(prompt, temperature, maxTokens, modelId = BEDROCK_MODEL_ID) {
+async function invokeBedrock(prompt, temperature, maxTokens, options = {}) {
+  const { modelId = BEDROCK_MODEL_ID, stage = "unknown" } = options;
   const response = await bedrock.send(
     new ConverseCommand({
       modelId,
@@ -188,7 +201,8 @@ async function invokeBedrock(prompt, temperature, maxTokens, modelId = BEDROCK_M
   );
 
   const { inputTokens, outputTokens } = response.usage ?? {};
-  logAPICalls(`Bedrock ${modelId}: ${inputTokens} input tokens, ${outputTokens} output tokens`);
+  recordModelCall({ stage, modelId, inputTokens, outputTokens });
+  logAPICalls(`Bedrock ${modelId} (${stage}): ${inputTokens} input tokens, ${outputTokens} output tokens`);
 
   // Concatenate text blocks and ignore any non-text blocks (e.g. reasoning content).
   const text = (response.output?.message?.content ?? [])
@@ -233,7 +247,7 @@ export async function generateSqlFromQuery(userQuery) {
     User Question: "${userQuery}"
     SQL Query:`;
 
-  return invokeBedrock(prompt, 0.0, SQL_MAX_TOKENS);
+  return invokeBedrock(prompt, 0.0, SQL_MAX_TOKENS, { stage: "sql" });
 }
 
 /**
@@ -267,7 +281,7 @@ export async function regenerateSqlFromError(userQuery, previousSql, sqliteError
 
     Corrected SQL Query:`;
 
-  return invokeBedrock(prompt, 0.0, SQL_MAX_TOKENS);
+  return invokeBedrock(prompt, 0.0, SQL_MAX_TOKENS, { stage: "repair" });
 }
 
 /**
@@ -311,7 +325,7 @@ export async function generateNaturalLanguageAnswer(userQuery, sqlQuery, rawResu
 
     Natural Language Answer:`;
 
-  return invokeBedrock(prompt, 0.3, ANSWER_MAX_TOKENS);
+  return invokeBedrock(prompt, 0.3, ANSWER_MAX_TOKENS, { stage: "answer" });
 }
 
 /**
@@ -358,7 +372,7 @@ User question: "${userQuery}"
 Exact count: ${count}
 Sentence:`;
 
-    const wrapped = (await invokeBedrock(prompt, 0.2, WRAPPER_MAX_TOKENS))
+    const wrapped = (await invokeBedrock(prompt, 0.2, WRAPPER_MAX_TOKENS, { stage: "wrapper_count" }))
       .replace(/^["'“”]+|["'“”]+$/g, "")
       .trim();
     const countPattern = new RegExp(`\\b${count}\\b`);
@@ -380,7 +394,7 @@ User question: "${userQuery}"
 Exact count: ${count}
 Introduction:`;
 
-  const intro = (await invokeBedrock(prompt, 0.2, WRAPPER_MAX_TOKENS))
+  const intro = (await invokeBedrock(prompt, 0.2, WRAPPER_MAX_TOKENS, { stage: "wrapper_list" }))
     .replace(/^["'“”]+|["'“”]+$/g, "")
     .replace(/^here(?:'s| is)\b[^:]*:\s*/i, "")
     .replace(/^introduction:\s*/i, "")
@@ -518,7 +532,10 @@ async function reformulateUserQueryToIncludePreviousContext(messages, lastUserMe
     Standalone question:`;
 
   try {
-    const reformulated = (await invokeBedrock(prompt, 0.0, REFORMULATE_MAX_TOKENS, CHEAP_MODEL_ID))
+    const reformulated = (await invokeBedrock(prompt, 0.0, REFORMULATE_MAX_TOKENS, {
+      modelId: CHEAP_MODEL_ID,
+      stage: "reformulate",
+    }))
       .replace(/<think>[\s\S]*?<\/think>/gi, "")
       .replace(/^["'“”]+|["'“”]+$/g, "")
       .replace(/\s+/g, " ")
@@ -532,7 +549,25 @@ async function reformulateUserQueryToIncludePreviousContext(messages, lastUserMe
   }
 }
 
-app.post('/api/query', async (req, res) => {
+app.post('/api/query', async (req, res) => withUsageCapture(async () => {
+  // Accumulated as the request progresses, then persisted once the response has
+  // been sent. Token counts are gathered separately by the usage context.
+  const logEntry = {
+    rawQuery: '',
+    reformulatedQuery: null,
+    sqlQuery: null,
+    rowCount: null,
+    response: null,
+    outcome: 'error',
+  };
+
+  // Send the response first, then persist. Logging must never add latency to,
+  // or be able to fail, a user-facing request.
+  const respondAndLog = async (payload) => {
+    res.json(payload);
+    await saveRequestLog(logEntry);
+  };
+
   try {
     // Validate the request envelope before extracting the query, so that a
     // malformed body yields a 400 rather than a TypeError surfaced as a 500.
@@ -554,10 +589,12 @@ app.post('/api/query', async (req, res) => {
     if (userQuery.length > MAX_QUERY_LENGTH) {
       return res.status(400).json({ error: `Query too long (max ${MAX_QUERY_LENGTH} characters)` });
     }
+    logEntry.rawQuery = userQuery;
 
     // If there is previous context, reformulate the user's query to include it.
     if (messages.length > 1) {
       userQuery = await reformulateUserQueryToIncludePreviousContext(messages, userQuery);
+      logEntry.reformulatedQuery = userQuery;
       logAPICalls('Reformulated query with context:', userQuery);
     }
 
@@ -567,6 +604,7 @@ app.post('/api/query', async (req, res) => {
     const generatedSqlQuery = await generateSqlFromQuery(safeQuery);
     let sqlQuery = alignCanonicalColumnsToLlmView(generatedSqlQuery);
     sqlQuery = enforceDistinctForOrgNameLists(sqlQuery);
+    logEntry.sqlQuery = sqlQuery;
 
     // Reject anything that isn't a SELECT before it touches the database.
     try {
@@ -574,7 +612,9 @@ app.post('/api/query', async (req, res) => {
     } catch (error) {
       if (error instanceof UnsafeSqlError) {
         logAPICalls('Out-of-scope or non-SQL query response:', { safeQuery, generatedSqlQuery });
-        return res.json({
+        logEntry.outcome = 'out_of_scope';
+        logEntry.response = OUT_OF_SCOPE_RESPONSE;
+        return respondAndLog({
           response: OUT_OF_SCOPE_RESPONSE,
           sources: [{ name: "Retrofit Directory", url: "https://retrofit-directory.org.uk" }],
         });
@@ -582,6 +622,7 @@ app.post('/api/query', async (req, res) => {
       throw error;
     }
 
+    let repaired = false;
     let rawResults;
     try {
       rawResults = await queryDatabase(sqlQuery);
@@ -590,12 +631,15 @@ app.post('/api/query', async (req, res) => {
       const repairedSql = await regenerateSqlFromError(safeQuery, sqlQuery, sqliteErrorText);
       sqlQuery = alignCanonicalColumnsToLlmView(repairedSql);
       sqlQuery = enforceDistinctForOrgNameLists(sqlQuery);
+      logEntry.sqlQuery = sqlQuery;
       try {
         validateSql(sqlQuery);
       } catch (error) {
         if (error instanceof UnsafeSqlError) {
           logAPICalls('Out-of-scope after SQL repair attempt:', { safeQuery, repairedSql });
-          return res.json({
+          logEntry.outcome = 'out_of_scope';
+          logEntry.response = OUT_OF_SCOPE_RESPONSE;
+          return respondAndLog({
             response: OUT_OF_SCOPE_RESPONSE,
             sources: [{ name: "Retrofit Directory", url: "https://retrofit-directory.org.uk" }],
           });
@@ -603,6 +647,7 @@ app.post('/api/query', async (req, res) => {
         throw error;
       }
       rawResults = await queryDatabase(sqlQuery);
+      repaired = true;
       logAPICalls('Query repaired after initial SQLite error:', { safeQuery, sqliteErrorText, repairedSql: sqlQuery });
     }
     const deterministicFacts = buildDeterministicFacts(rawResults);
@@ -613,20 +658,36 @@ app.post('/api/query', async (req, res) => {
     // Return only the natural-language answer; SQL and raw rows are logged server-side only.
     logAPICalls('Query processed:', { safeQuery, sqlQuery, rowCount: rawResults.length, SQLresults: rawResults });
 
-    /* Don't bother to send the source since so far the only source is the Dircetory.  Later, when we add more sources, we'll reinstate this */
+    logEntry.rowCount = rawResults.length;
+    logEntry.response = answer;
+    logEntry.outcome = repaired ? 'repaired' : 'ok';
+
+    /* Don't bother to send the source since so far the only source is the Directory.  Later, when we add more sources, we'll reinstate this */
     //    res.json({ response: answer, sources: [{ name: "Retrofit Directory", url: "https://retrofit-directory.org.uk" }] });
-    res.json({ response: answer, sources: [] })
+    await respondAndLog({ response: answer, sources: [] })
   } catch (error) {
     console.error('Error processing query:', error);
     res.status(500).json({ error: 'Internal Server Error' });
+    // Only log failures that got far enough to have a question attached.
+    if (logEntry.rawQuery) {
+      logEntry.outcome = 'error';
+      logEntry.response = error?.message || String(error);
+      await saveRequestLog(logEntry);
+    }
   }
-});
+}));
 
 app.post('/api/observe', async (req, res) => {
   try {
-    res.json({ response: 'admin results' })
+    // `includeRecent` will drive the scrollable query/response list on
+    // admin.html; token totals are always present.
+    const summary = await getUsageSummary({
+      includeRecent: req.body?.includeRecent === true,
+      recentLimit: req.body?.recentLimit,
+    });
+    res.json(summary)
   } catch (error) {
-    console.error('Error processing query:', error);
+    console.error('Error building usage summary:', error);
     res.status(500).json({ error: 'Internal Server Error' });
   }
 });
