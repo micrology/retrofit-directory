@@ -18,26 +18,9 @@ function showToast(message, variant = 'success', options = {}) {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
-    initMobileNav();
     initTextareaActions();
     initCookieConsent();
 });
-
-/**
- * Mobile Navigation Toggle
- */
-function initMobileNav() {
-    const toggleBtn = document.getElementById('mobileNavToggle');
-    const navMenu = document.getElementById('navMenu');
-
-    if (toggleBtn && navMenu) {
-        toggleBtn.addEventListener('click', () => {
-            navMenu.classList.toggle('open');
-            const isOpen = navMenu.classList.contains('open');
-            toggleBtn.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
-        });
-    }
-}
 
 /**
  * Copy/Save buttons, Canned queries, and Backend Integration
