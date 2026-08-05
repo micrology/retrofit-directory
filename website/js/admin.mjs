@@ -12,6 +12,12 @@
 const PASSWORD = 'retrofit-admin' // Intentionally simple deterrent only.
 const RECENT_LIMIT = 100
 
+// A successful unlock is remembered so the password is not required on every
+// visit. Only a timestamp is stored, never the password itself, and it lapses
+// after the period below so an unattended browser does not stay open forever.
+const UNLOCK_STORAGE_KEY = 'retrofit_admin_unlocked_at'
+const UNLOCK_TTL_MS = 30 * 24 * 60 * 60 * 1000 // 30 days
+
 const isLocal =
   window.location.hostname === '127.0.0.1' || window.location.hostname === 'localhost'
 const API_BASE_URL = isLocal
@@ -36,9 +42,61 @@ const smallCostFormatter = new Intl.NumberFormat('en-GB', {
 const SMALL_COST_THRESHOLD_USD = 0.001
 
 /**
+ * Read the stored unlock time. Storage access can throw when cookies/storage
+ * are blocked, in which case the gate simply falls back to asking every time.
+ * @returns {number | null} Epoch milliseconds, or null if absent/unreadable.
+ */
+function readUnlockTime() {
+  try {
+    const raw = window.localStorage.getItem(UNLOCK_STORAGE_KEY)
+    if (!raw) return null
+    const timestamp = Number(raw)
+    return Number.isFinite(timestamp) ? timestamp : null
+  } catch {
+    return null
+  }
+}
+
+/** @returns {void} */
+function rememberUnlock() {
+  try {
+    window.localStorage.setItem(UNLOCK_STORAGE_KEY, String(Date.now()))
+  } catch {
+    // Storage unavailable; the unlock just will not persist.
+  }
+}
+
+/** @returns {void} */
+function forgetUnlock() {
+  try {
+    window.localStorage.removeItem(UNLOCK_STORAGE_KEY)
+  } catch {
+    // Nothing to clean up if storage is unavailable.
+  }
+}
+
+/**
+ * Whether a previous unlock is still valid. An expired record is discarded so
+ * it cannot linger in storage.
+ * @returns {boolean}
+ */
+function isUnlockRemembered() {
+  const unlockedAt = readUnlockTime()
+  if (unlockedAt === null) return false
+
+  // A clock change could put the stored time in the future; treat that as stale.
+  const age = Date.now() - unlockedAt
+  if (age < 0 || age > UNLOCK_TTL_MS) {
+    forgetUnlock()
+    return false
+  }
+  return true
+}
+
+/**
  * Create an element with optional class, text and attributes.
  * @param {string} tag
- * @param {{ className?: string, text?: string, title?: string, attrs?: Record<string,string> }} [options]
+ * @param {{ className?: string, text?: string, attrs?: Record<string,string> }} [options]
  * @param {Node[]} [children]
  * @returns {HTMLElement}
  */
@@ -46,7 +104,6 @@ function el(tag, options = {}, children = []) {
   const node = document.createElement(tag)
   if (options.className) node.className = options.className
   if (options.text !== undefined) node.textContent = options.text
-  if (options.title) node.title = options.title
   for (const [name, value] of Object.entries(options.attrs ?? {})) {
     node.setAttribute(name, value)
   }
@@ -92,7 +149,9 @@ function formatTimestamp(isoTimestamp) {
  *
  * `clamp` columns put their text in an inner element, because the CSS used to
  * truncate long values cannot be applied to a <td> without breaking the table
- * layout. The untruncated value stays available as the cell's tooltip.
+ * layout. Cells carry no `title` tooltip: clamped text is revealed by expanding
+ * the row, and every other column either wraps or is short enough to read in
+ * full, so a tooltip would only ever restate the visible text.
  * @param {Array<{ label: string, key: string, numeric?: boolean, clamp?: boolean, format?: (value: any, row: any) => string, className?: string }>} columns
  * @param {any[]} rows
  * @returns {HTMLElement}
@@ -118,11 +177,13 @@ function buildTable(columns, rows) {
           .join(' ')
 
         if (column.clamp) {
-          return el('td', { className: classNames, title: text }, [
+          return el('td', { className: classNames }, [
             el('div', { className: 'admin-clamp', text }),
+            // Hint label; shown by CSS only once the text is known to overflow.
+            el('span', { className: 'admin-more-hint', attrs: { 'aria-hidden': 'true' } }),
           ])
         }
-        return el('td', { text, className: classNames, title: text })
+        return el('td', { text, className: classNames })
       })
     )
   )
@@ -176,6 +237,40 @@ function buildTotals(totals) {
 }
 
 /**
+ * Toggle the expanded state of one recent-request row.
+ * @param {HTMLElement} row
+ * @returns {void}
+ */
+function toggleRowExpansion(row) {
+  const expanded = row.classList.toggle('is-expanded')
+  row.setAttribute('aria-expanded', expanded ? 'true' : 'false')
+}
+
+/**
+ * Flag clamped cells whose text is actually cut off, so the "Show more" hint
+ * only appears where there is more to see.
+ *
+ * Overflow can only be measured once the table is laid out, hence the frame
+ * delay. If measurement is unavailable the hint is simply omitted; rows stay
+ * expandable either way.
+ * @param {HTMLElement} table
+ * @returns {void}
+ */
+function markOverflowingCells(table) {
+  const measure = () => {
+    for (const node of table.querySelectorAll('.admin-clamp')) {
+      if (node.scrollHeight - node.clientHeight > 2) node.classList.add('is-truncated')
+    }
+  }
+
+  if (typeof requestAnimationFrame === 'function') {
+    requestAnimationFrame(measure)
+    return
+  }
+  measure()
+}
+
+/**
  * Scrollable list of recent questions and the answers returned.
  * @param {any[]} recentRequests
  * @returns {HTMLElement}
@@ -216,6 +311,16 @@ function buildRecentRequests(recentRequests) {
   )
 
   table.classList.add('admin-table-scroll')
+
+  // Rows expand to reveal the full question and answer. Focusable so the
+  // keyboard can reach them, since there is no button to tab to.
+  for (const row of table.querySelectorAll('tbody tr')) {
+    row.classList.add('admin-row-expandable')
+    row.setAttribute('tabindex', '0')
+    row.setAttribute('aria-expanded', 'false')
+  }
+
+  markOverflowingCells(table)
   return table
 }
 
@@ -404,6 +509,19 @@ function initAuthGate() {
 
   if (!overlay || !input || !submitBtn || !errorMessage) return
 
+  const unlock = () => {
+    document.body.classList.remove('auth-locked')
+    overlay.remove()
+    populateAdminContent()
+  }
+
+  // Returning visitor within the remembered window: skip the prompt entirely.
+  // The overlay starts hidden in the markup so it never flashes into view.
+  if (isUnlockRemembered()) {
+    unlock()
+    return
+  }
+
   const attemptUnlock = () => {
     if (input.value !== PASSWORD) {
       errorMessage.classList.add('visible')
@@ -412,12 +530,12 @@ function initAuthGate() {
       return
     }
 
-    document.body.classList.remove('auth-locked')
-    overlay.remove()
-    populateAdminContent()
+    rememberUnlock()
+    unlock()
   }
 
   document.body.classList.add('auth-locked')
+  overlay.hidden = false
   input.focus()
 
   submitBtn.addEventListener('click', attemptUnlock)
@@ -426,11 +544,36 @@ function initAuthGate() {
   })
 }
 
-// The Refresh button is rebuilt on every render, so listen at the container.
-document.getElementById('admin-content')?.addEventListener('click', (event) => {
-  if (event.target instanceof Element && event.target.closest('[data-admin-refresh]')) {
+// Content is rebuilt on every render, so listen at the container instead of
+// binding to elements that will be replaced.
+const adminContainer = document.getElementById('admin-content')
+
+adminContainer?.addEventListener('click', (event) => {
+  if (!(event.target instanceof Element)) return
+
+  if (event.target.closest('[data-admin-refresh]')) {
     populateAdminContent()
+    return
   }
+
+  const row = event.target.closest('tr.admin-row-expandable')
+  if (!row) return
+
+  // Do not collapse a row the user was only dragging across to copy text.
+  if (window.getSelection()?.toString()) return
+
+  toggleRowExpansion(row)
+})
+
+adminContainer?.addEventListener('keydown', (event) => {
+  if (event.key !== 'Enter' && event.key !== ' ') return
+  if (!(event.target instanceof Element)) return
+
+  const row = event.target.closest('tr.admin-row-expandable')
+  if (!row) return
+
+  event.preventDefault() // Space would otherwise scroll the page.
+  toggleRowExpansion(row)
 })
 
 initAuthGate()

@@ -690,7 +690,7 @@ main.main-content {
   color: var(--text-muted);
 }
 
-/* Query/answer cells: clamp long text, full value available on hover. The clamp
+/* Query/answer cells: clamped to 4 lines until the row is expanded. The clamp
    lives on an inner div because -webkit-box would break <td> table layout. */
 .admin-table .admin-cell-text {
   min-width: 200px;
@@ -704,6 +704,44 @@ main.main-content {
   overflow: hidden;
   white-space: pre-line;
   overflow-wrap: anywhere;
+}
+
+/* Expandable rows: click (or Enter/Space when focused) reveals the full text. */
+.admin-table tr.admin-row-expandable {
+  cursor: pointer;
+}
+.admin-table tr.admin-row-expandable:focus-visible {
+  outline: 2px solid var(--accent-color);
+  outline-offset: -2px;
+}
+.admin-table tr.admin-row-expandable.is-expanded {
+  background-color: var(--accent-light);
+}
+.admin-table tr.is-expanded .admin-clamp {
+  display: block;
+  -webkit-line-clamp: unset;
+  line-clamp: unset;
+  overflow: visible;
+}
+
+/* "Show more" affordance, revealed only for cells whose text actually
+   overflows (the .is-truncated class is applied after measuring). */
+.admin-more-hint {
+  display: none;
+}
+.admin-clamp.is-truncated + .admin-more-hint {
+  display: inline-block;
+  margin-top: 0.3rem;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  color: var(--accent-color);
+  text-decoration: underline;
+}
+.admin-more-hint::before {
+  content: 'Show more';
+}
+.admin-table tr.is-expanded .admin-more-hint::before {
+  content: 'Show less';
 }
 
 @media (max-width: 768px) {

@@ -123,7 +123,9 @@
       </div>
     </footer>
 
-    <div id="authModalOverlay" class="auth-modal-overlay" aria-hidden="false">
+    <!-- Hidden by default; js/admin.mjs reveals it only when the password is
+         actually needed, so a remembered unlock shows no flash of the modal. -->
+    <div id="authModalOverlay" class="auth-modal-overlay" hidden>
       <div class="auth-modal" role="dialog" aria-modal="true" aria-labelledby="authModalTitle">
         <h2 id="authModalTitle">Admin access</h2>
         <p>Please enter the password to continue.</p>
