@@ -38,7 +38,7 @@ function initTextareaActions() {
         window.location.hostname === '127.0.0.1' || window.location.hostname === 'localhost'
     const API_BASE_URL = isLocal ? 'http://localhost:5001/api' : 'https://retrofit-directory.org.uk/retrofit'
     const IMAGE_BASE_URL = isLocal ? 'http://localhost:5001/api' : 'https://retrofit-directory.org.uk/retrofit'
-    
+
     async function sendMessage(prompt = '') {
         const message = prompt || userInput.value.trim()
         if (!message) return
@@ -47,7 +47,7 @@ function initTextareaActions() {
         chatHistory.push({ role: 'user', content: [{ query: message }] })
         appendMessage('user', message)
         userInput.value = ''
-        userInput.placeholder= 'Ask a follow up or new question...'
+        userInput.placeholder = 'Ask a follow up or new question...'
         overlay.style.display = 'block'
 
         try {
@@ -138,6 +138,7 @@ function initTextareaActions() {
     newChat.addEventListener('click', () => {
         chatHistory = []
         messagesDiv.innerHTML = ''
+        userInput.placeholder = 'Ask anything about retrofit...'
     })
 
     // Select all the suggestion buttons and add the listener

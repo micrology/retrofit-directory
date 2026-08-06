@@ -232,8 +232,8 @@ export async function generateSqlFromQuery(userQuery) {
     - Return ONLY the raw SQL query. Do not include markdown formatting (like \`\`\`sql), code blocks, or explanatory text.
     - Only use SELECT statements. Never generate INSERT, UPDATE, DELETE, or DROP statements.
     - Use case-insensitive matching where appropriate (e.g., LIKE '%Manchester%') for text filters.
-    - If the user asks for a count, use COUNT(*).
     - For list-style outputs (especially organisation names), use DISTINCT unless duplicates are explicitly requested.
+    - The Directory contains duplicate entries: the same organisation can appear in more than one row. When the user asks to count organisations, count DISTINCT identities with COUNT(DISTINCT org_name) rather than COUNT(*), so each organisation is counted only once. Reserve COUNT(*) for counting raw rows/entries (e.g. survey responses) rather than distinct organisations.
     - Prefer querying the canonical view orgs_llm when it is present in the schema; its columns are semantic aliases (e.g. org_name, county, org_main_type, works_with_architects) and should be preferred over long raw survey column names.
     - If you reference any canonical alias column (e.g. org_name, org_main_type, county), you MUST query FROM orgs_llm (never FROM orgs).
     - Never select or filter on columns marked [EMPTY - no data]; they contain no values. For example, an organisation's "name" is the answer to the "name of the organisation" question column, NOT the empty recipient_first_name/recipient_last_name metadata columns.
@@ -268,6 +268,7 @@ export async function regenerateSqlFromError(userQuery, previousSql, sqliteError
     - Only use SELECT statements. Never generate INSERT, UPDATE, DELETE, DROP, ALTER, or PRAGMA.
     - Use the provided schema exactly.
     - For list-style outputs (especially organisation names), use DISTINCT unless duplicates are explicitly requested.
+    - The Directory contains duplicate entries: when counting organisations, use COUNT(DISTINCT org_name) rather than COUNT(*).
     - If you reference canonical alias columns (e.g. org_name, org_main_type, county), query FROM orgs_llm (not orgs).
     - Never select or filter on columns marked [EMPTY - no data].
     - Keep the corrected query semantically faithful to the original user question.
@@ -318,6 +319,7 @@ export async function generateNaturalLanguageAnswer(userQuery, sqlQuery, rawResu
     - If the result is a list of names/records, list them nicely.
     - If the results are empty, politely state that no matching records were found.
     - Do not mention SQL or technical database details in your response.
+    - The data comes from the Retrofit Directory, which is NOT an exhaustive list of every retrofit organisation in the UK. If the user's question asks about all organisations in the UK (or a wider population) as though the Directory were complete, make clear that your answer reflects only the organisations listed in the Directory. If the user's question is specifically about the Directory itself, no such caveat is needed.
 
     User Question: "${userQuery}"
     SQL Query Used: "${sqlQuery}"
@@ -366,6 +368,7 @@ Rules:
 - You MUST keep the exact count as ${count}.
 - Do not change the number or add uncertainty.
 - Do not mention SQL or databases unless the user explicitly asked about them.
+- The count reflects only organisations listed in the Retrofit Directory, which is NOT an exhaustive list of every retrofit organisation in the UK. If the user's question asks about the total number in the UK (or a wider population) as though the Directory were complete, make this clear and frame the count as applying only to Directory listings, e.g. "I can only tell you about the organisations listed in the Retrofit Directory; there are ${count} of these." If the user's question is specifically about the Directory itself, no such caveat is needed.
 - Output only the final sentence for the end user (no preface, no labels, no quotes).
 
 User question: "${userQuery}"
@@ -388,6 +391,7 @@ Rules:
 - Mention that the full list follows.
 - Do not include item names in the introduction.
 - Do not mention SQL or databases unless the user explicitly asked about them.
+- The list reflects only organisations listed in the Retrofit Directory, which is NOT an exhaustive list of every retrofit organisation in the UK. If the user's question asks for all organisations in the UK (or a wider population) as though the Directory were complete, make clear that the list covers only Directory listings. If the user's question is specifically about the Directory itself, no such caveat is needed.
 - Output only the final introduction text for the end user (no preface like "Here is...", no labels, no quotes).
 
 User question: "${userQuery}"
