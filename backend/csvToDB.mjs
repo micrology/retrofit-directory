@@ -15,16 +15,70 @@ const SCHEMA_PATH = path.join(path.dirname(fileURLToPath(import.meta.url)), "dir
 const TABLE_NAME = "orgs";
 const LLM_VIEW_NAME = "orgs_llm";
 const HEADER_ROW_INDEX = 1;
-const SKIP_ROWS = new Set([2]);
+// Optional 0-based source row indexes to drop before header/data split (e.g. extra label rows).
+const SKIP_ROWS = new Set();
+// Spreadsheet columns A–S (0–18) are survey-respondent metadata, not answers.
+const FIRST_DATA_COLUMN_INDEX = 19; // column T onwards
 const SCHEMA_EXAMPLE_LIMIT = 3;
+
+/**
+ * Normalise free text: embedded newlines → spaces, collapse runs of whitespace,
+ * trim leading/trailing spaces and newlines.
+ * @param {string} value
+ * @returns {string}
+ */
+function normalizeWhitespace(value) {
+  return String(value)
+    .replace(/[\r\n]+/g, " ")
+    .replace(/[ \t\f\v]+/g, " ")
+    .trim();
+}
+
 /**
  * Normalise a CSV header label into a deterministic SQL column identifier.
  * @param {unknown} columnName
  * @returns {string}
  */
-
 function cleanColumnName(columnName) {
-  return String(columnName).trim().toLowerCase().replace(/ /g, "_");
+  return normalizeWhitespace(columnName).toLowerCase().replace(/ /g, "_");
+}
+
+/**
+ * Coerce a cell to the value stored in SQLite, including text whitespace cleanup.
+ * Empty cells become null. Dates become SQLite datetime strings. Other non-strings
+ * pass through unchanged.
+ * @param {unknown} value
+ * @returns {unknown}
+ */
+function normalizeCellValue(value) {
+  if (isEmptyCell(value)) return null;
+  if (value instanceof Date) {
+    return value.toISOString().replace("T", " ").replace(/\.\d+Z$/, "");
+  }
+  if (typeof value === "string") {
+    const normalized = normalizeWhitespace(value);
+    return normalized === "" ? null : normalized;
+  }
+  return value;
+}
+
+/**
+ * True when a cell has no usable content for import.
+ * @param {unknown} value
+ * @returns {boolean}
+ */
+function isEmptyCell(value) {
+  return value === undefined || value === null || value === "" || (typeof value === "string" && value.trim() === "");
+}
+
+/**
+ * True when every data-row value in a column is empty.
+ * @param {unknown[][]} dataRows
+ * @param {number} colIdx
+ * @returns {boolean}
+ */
+function isColumnEmpty(dataRows, colIdx) {
+  return dataRows.every((row) => isEmptyCell(row[colIdx]));
 }
 
 /**
@@ -362,9 +416,33 @@ async function main() {
     throw new Error("Input file does not contain enough rows to read the configured header.");
   }
 
-  const cleanedColumns = filteredRows[HEADER_ROW_INDEX].map(cleanColumnName);
+  const headerRow = filteredRows[HEADER_ROW_INDEX];
   const dataRows = filteredRows.slice(HEADER_ROW_INDEX + 1);
   const normalizedDataRows = format === "xlsx" ? normalizeExcelDateColumns(dataRows) : dataRows;
+
+  // Keep survey-answer columns only (T onwards) and drop columns with no data.
+  const maxColumnCount = Math.max(
+    headerRow.length,
+    ...normalizedDataRows.map((row) => row.length),
+    FIRST_DATA_COLUMN_INDEX
+  );
+  const keptColumnIndexes = [];
+  for (let colIdx = FIRST_DATA_COLUMN_INDEX; colIdx < maxColumnCount; colIdx += 1) {
+    if (isColumnEmpty(normalizedDataRows, colIdx)) continue;
+    keptColumnIndexes.push(colIdx);
+  }
+
+  if (keptColumnIndexes.length === 0) {
+    throw new Error(
+      `No non-empty data columns found from column index ${FIRST_DATA_COLUMN_INDEX} (T) onwards.`
+    );
+  }
+
+  const cleanedColumns = keptColumnIndexes.map((colIdx) => {
+    const rawName = headerRow[colIdx];
+    const cleaned = cleanColumnName(rawName);
+    return cleaned || `column_${colIdx + 1}`;
+  });
 
   const db = new sqlite3.Database(DB_PATH);
 
@@ -372,8 +450,8 @@ async function main() {
     await run(db, `DROP TABLE IF EXISTS ${quoteIdentifier(TABLE_NAME)}`);
 
     // Infer a SQLite type per column from the cast values.
-    const columnTypes = cleanedColumns.map((_, colIdx) =>
-      inferSqliteType(normalizedDataRows.map((row) => row[colIdx]))
+    const columnTypes = keptColumnIndexes.map((sourceIdx) =>
+      inferSqliteType(normalizedDataRows.map((row) => row[sourceIdx]))
     );
     const createColumns = cleanedColumns
       .map((c, i) => `${quoteIdentifier(c)} ${columnTypes[i]}`)
@@ -385,16 +463,7 @@ async function main() {
       .join(", ")}) VALUES (${cleanedColumns.map(() => "?").join(", ")})`;
 
     for (const row of normalizedDataRows) {
-      const normalizedRow = cleanedColumns.map((_, index) => {
-        const value = row[index];
-        if (value === undefined || value === null || value === "") return null;
-        // Serialise Date objects as "YYYY-MM-DD HH:MM:SS" (SQLite datetime convention).
-        if (value instanceof Date) {
-          return value.toISOString().replace("T", " ").replace(/\.\d+Z$/, "");
-        }
-        // Pass numbers and booleans through natively; sqlite3 handles them correctly.
-        return value;
-      });
+      const normalizedRow = keptColumnIndexes.map((sourceIdx) => normalizeCellValue(row[sourceIdx]));
       await run(db, insertSql, normalizedRow);
     }
 
