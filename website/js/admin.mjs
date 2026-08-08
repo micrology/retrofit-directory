@@ -18,8 +18,7 @@ const RECENT_LIMIT = 100
 const UNLOCK_STORAGE_KEY = 'retrofit_admin_unlocked_at'
 const UNLOCK_TTL_MS = 30 * 24 * 60 * 60 * 1000 // 30 days
 
-const isLocal =
-  window.location.hostname === '127.0.0.1' || window.location.hostname === 'localhost'
+const isLocal = window.location.hostname === '127.0.0.1' || window.location.hostname === 'localhost'
 const API_BASE_URL = isLocal
   ? 'http://localhost:5001/api'
   : 'https://retrofit-directory.org.uk/retrofit'
@@ -370,9 +369,7 @@ function renderDashboard(container, data) {
   )
 
   if (!totals.requestCount) {
-    fragment.append(
-      el('p', { className: 'admin-note', text: 'No queries have been logged yet.' })
-    )
+    fragment.append(el('p', { className: 'admin-note', text: 'No queries have been logged yet.' }))
     container.replaceChildren(fragment)
     return
   }

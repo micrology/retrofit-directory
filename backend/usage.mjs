@@ -1,7 +1,7 @@
-import path from "node:path";
-import { fileURLToPath } from "node:url";
-import { AsyncLocalStorage } from "node:async_hooks";
-import sqlite3 from "sqlite3";
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { AsyncLocalStorage } from 'node:async_hooks'
+import sqlite3 from 'sqlite3'
 
 /**
  * Usage/observability store for the retrofit query service.
@@ -16,7 +16,7 @@ import sqlite3 from "sqlite3";
  * swallows its own errors and logs instead of throwing.
  */
 
-const USAGE_DB_PATH = path.join(path.dirname(fileURLToPath(import.meta.url)), "usage.db");
+const USAGE_DB_PATH = path.join(path.dirname(fileURLToPath(import.meta.url)), 'usage.db')
 
 /**
  * Bedrock on-demand prices in USD per 1,000,000 tokens, keyed by model id.
@@ -27,19 +27,19 @@ const USAGE_DB_PATH = path.join(path.dirname(fileURLToPath(import.meta.url)), "u
  * See https://aws.amazon.com/bedrock/pricing/
  */
 const MODEL_RATES_USD_PER_MTOK = {
-  "eu.anthropic.claude-haiku-4-5-20251001-v1:0": { input: 1.1, output: 5.5 },
-  "qwen.qwen3-235b-a22b-2507-v1:0": { input: 0.34, output: 1.37 },
-};
-const FALLBACK_RATE_USD_PER_MTOK = { input: 0, output: 0 };
+  'eu.anthropic.claude-haiku-4-5-20251001-v1:0': { input: 1.1, output: 5.5 },
+  'qwen.qwen3-235b-a22b-2507-v1:0': { input: 0.34, output: 1.37 },
+}
+const FALLBACK_RATE_USD_PER_MTOK = { input: 0, output: 0 }
 
-const DEFAULT_RECENT_LIMIT = 50;
-const MAX_RECENT_LIMIT = 500;
+const DEFAULT_RECENT_LIMIT = 50
+const MAX_RECENT_LIMIT = 500
 
 /** Per-request token capture context, so invokeBedrock needs no threading. */
-const usageContext = new AsyncLocalStorage();
+const usageContext = new AsyncLocalStorage()
 
 /** @type {sqlite3.Database | null} */
-let db = null;
+let db = null
 
 /**
  * Promise-based wrapper around sqlite3 `db.run`.
@@ -52,12 +52,12 @@ function run(database, sql, params = []) {
   return new Promise((resolve, reject) => {
     database.run(sql, params, function runCallback(err) {
       if (err) {
-        reject(err);
-        return;
+        reject(err)
+        return
       }
-      resolve(this);
-    });
-  });
+      resolve(this)
+    })
+  })
 }
 
 /**
@@ -71,12 +71,12 @@ function all(database, sql, params = []) {
   return new Promise((resolve, reject) => {
     database.all(sql, params, (err, rows) => {
       if (err) {
-        reject(err);
-        return;
+        reject(err)
+        return
       }
-      resolve(rows);
-    });
-  });
+      resolve(rows)
+    })
+  })
 }
 
 /**
@@ -85,7 +85,7 @@ function all(database, sql, params = []) {
  * @returns {Promise<sqlite3.Database | null>} null if the store is unavailable.
  */
 export async function initUsageStore() {
-  if (db) return db;
+  if (db) return db
 
   try {
     const database = await new Promise((resolve, reject) => {
@@ -93,13 +93,13 @@ export async function initUsageStore() {
         USAGE_DB_PATH,
         sqlite3.OPEN_READWRITE | sqlite3.OPEN_CREATE,
         (err) => (err ? reject(err) : resolve(handle))
-      );
-    });
+      )
+    })
 
     // WAL lets /api/observe read while /api/query writes. Single Node process
     // means a single writer, so there is no real contention to manage.
-    await run(database, "PRAGMA journal_mode = WAL");
-    await run(database, "PRAGMA busy_timeout = 5000");
+    await run(database, 'PRAGMA journal_mode = WAL')
+    await run(database, 'PRAGMA busy_timeout = 5000')
 
     await run(
       database,
@@ -116,8 +116,8 @@ export async function initUsageStore() {
          output_tokens      INTEGER NOT NULL DEFAULT 0,
          latency_ms         INTEGER
        )`
-    );
-    await run(database, "CREATE INDEX IF NOT EXISTS idx_request_log_ts ON request_log(ts)");
+    )
+    await run(database, 'CREATE INDEX IF NOT EXISTS idx_request_log_ts ON request_log(ts)')
 
     await run(
       database,
@@ -129,17 +129,17 @@ export async function initUsageStore() {
          input_tokens  INTEGER NOT NULL DEFAULT 0,
          output_tokens INTEGER NOT NULL DEFAULT 0
        )`
-    );
+    )
     await run(
       database,
-      "CREATE INDEX IF NOT EXISTS idx_model_call_request ON model_call(request_id)"
-    );
+      'CREATE INDEX IF NOT EXISTS idx_model_call_request ON model_call(request_id)'
+    )
 
-    db = database;
-    return db;
+    db = database
+    return db
   } catch (error) {
-    console.error(`Usage store unavailable at ${USAGE_DB_PATH}:`, error?.message || error);
-    return null;
+    console.error(`Usage store unavailable at ${USAGE_DB_PATH}:`, error?.message || error)
+    return null
   }
 }
 
@@ -153,7 +153,7 @@ export async function initUsageStore() {
  * @returns {Promise<T>}
  */
 export function withUsageCapture(callback) {
-  return usageContext.run({ calls: [], startedAt: Date.now() }, callback);
+  return usageContext.run({ calls: [], startedAt: Date.now() }, callback)
 }
 
 /**
@@ -163,14 +163,14 @@ export function withUsageCapture(callback) {
  * @returns {void}
  */
 export function recordModelCall({ stage, modelId, inputTokens, outputTokens }) {
-  const store = usageContext.getStore();
-  if (!store) return;
+  const store = usageContext.getStore()
+  if (!store) return
   store.calls.push({
     stage,
     modelId,
     inputTokens: Number(inputTokens) || 0,
     outputTokens: Number(outputTokens) || 0,
-  });
+  })
 }
 
 /**
@@ -178,8 +178,8 @@ export function recordModelCall({ stage, modelId, inputTokens, outputTokens }) {
  * @returns {number | null}
  */
 export function elapsedMs() {
-  const store = usageContext.getStore();
-  return store ? Date.now() - store.startedAt : null;
+  const store = usageContext.getStore()
+  return store ? Date.now() - store.startedAt : null
 }
 
 /**
@@ -198,16 +198,16 @@ export function elapsedMs() {
  * @returns {Promise<void>}
  */
 export async function saveRequestLog(entry) {
-  const store = usageContext.getStore();
-  const calls = store?.calls ?? [];
-  const latencyMs = elapsedMs();
+  const store = usageContext.getStore()
+  const calls = store?.calls ?? []
+  const latencyMs = elapsedMs()
 
   try {
-    const database = await initUsageStore();
-    if (!database) return;
+    const database = await initUsageStore()
+    if (!database) return
 
-    const inputTokens = calls.reduce((total, call) => total + call.inputTokens, 0);
-    const outputTokens = calls.reduce((total, call) => total + call.outputTokens, 0);
+    const inputTokens = calls.reduce((total, call) => total + call.inputTokens, 0)
+    const outputTokens = calls.reduce((total, call) => total + call.outputTokens, 0)
 
     const result = await run(
       database,
@@ -225,19 +225,19 @@ export async function saveRequestLog(entry) {
         outputTokens,
         latencyMs,
       ]
-    );
+    )
 
-    const requestId = result?.lastID;
+    const requestId = result?.lastID
     for (const call of calls) {
       await run(
         database,
         `INSERT INTO model_call (request_id, stage, model_id, input_tokens, output_tokens)
          VALUES (?, ?, ?, ?, ?)`,
         [requestId, call.stage, call.modelId, call.inputTokens, call.outputTokens]
-      );
+      )
     }
   } catch (error) {
-    console.error("Failed to write usage log:", error?.message || error);
+    console.error('Failed to write usage log:', error?.message || error)
   }
 }
 
@@ -249,9 +249,9 @@ export async function saveRequestLog(entry) {
  * @returns {number}
  */
 function estimateCostUsd(modelId, inputTokens, outputTokens) {
-  const rate = MODEL_RATES_USD_PER_MTOK[modelId] ?? FALLBACK_RATE_USD_PER_MTOK;
-  const cost = (inputTokens / 1e6) * rate.input + (outputTokens / 1e6) * rate.output;
-  return Number(cost.toFixed(6));
+  const rate = MODEL_RATES_USD_PER_MTOK[modelId] ?? FALLBACK_RATE_USD_PER_MTOK
+  const cost = (inputTokens / 1e6) * rate.input + (outputTokens / 1e6) * rate.output
+  return Number(cost.toFixed(6))
 }
 
 /**
@@ -267,12 +267,12 @@ export async function getUsageSummary({
   recentLimit = DEFAULT_RECENT_LIMIT,
   includeRecent = false,
 } = {}) {
-  const database = await initUsageStore();
+  const database = await initUsageStore()
   if (!database) {
-    return { available: false, error: "Usage store unavailable" };
+    return { available: false, error: 'Usage store unavailable' }
   }
 
-  const limit = Math.min(Math.max(Number(recentLimit) || DEFAULT_RECENT_LIMIT, 1), MAX_RECENT_LIMIT);
+  const limit = Math.min(Math.max(Number(recentLimit) || DEFAULT_RECENT_LIMIT, 1), MAX_RECENT_LIMIT)
 
   const [totalsRow] = await all(
     database,
@@ -282,12 +282,12 @@ export async function getUsageSummary({
             MIN(ts)                      AS first_request_at,
             MAX(ts)                      AS last_request_at
        FROM request_log`
-  );
+  )
 
   const outcomeRows = await all(
     database,
-    "SELECT outcome, COUNT(*) AS request_count FROM request_log GROUP BY outcome ORDER BY request_count DESC"
-  );
+    'SELECT outcome, COUNT(*) AS request_count FROM request_log GROUP BY outcome ORDER BY request_count DESC'
+  )
 
   const modelRows = await all(
     database,
@@ -298,7 +298,7 @@ export async function getUsageSummary({
        FROM model_call
       GROUP BY model_id
       ORDER BY input_tokens + output_tokens DESC`
-  );
+  )
 
   const stageRows = await all(
     database,
@@ -309,7 +309,7 @@ export async function getUsageSummary({
        FROM model_call
       GROUP BY stage
       ORDER BY input_tokens + output_tokens DESC`
-  );
+  )
 
   const dailyRows = await all(
     database,
@@ -320,7 +320,7 @@ export async function getUsageSummary({
        FROM request_log
       GROUP BY day
       ORDER BY day DESC`
-  );
+  )
 
   const dailyCostRows = await all(
     database,
@@ -331,12 +331,12 @@ export async function getUsageSummary({
        FROM model_call m
        JOIN request_log r ON r.id = m.request_id
       GROUP BY day, m.model_id`
-  );
+  )
 
-  const costByDay = new Map();
+  const costByDay = new Map()
   for (const row of dailyCostRows) {
-    const cost = estimateCostUsd(row.model_id, row.input_tokens, row.output_tokens);
-    costByDay.set(row.day, (costByDay.get(row.day) ?? 0) + cost);
+    const cost = estimateCostUsd(row.model_id, row.input_tokens, row.output_tokens)
+    costByDay.set(row.day, (costByDay.get(row.day) ?? 0) + cost)
   }
 
   const byModel = modelRows.map((row) => ({
@@ -346,7 +346,7 @@ export async function getUsageSummary({
     outputTokens: row.output_tokens,
     estimatedCostUsd: estimateCostUsd(row.model_id, row.input_tokens, row.output_tokens),
     ratesKnown: Boolean(MODEL_RATES_USD_PER_MTOK[row.model_id]),
-  }));
+  }))
 
   const recentRequests = includeRecent
     ? await all(
@@ -358,9 +358,9 @@ export async function getUsageSummary({
           LIMIT ?`,
         [limit]
       )
-    : [];
+    : []
 
-  const totalCostUsd = byModel.reduce((total, model) => total + model.estimatedCostUsd, 0);
+  const totalCostUsd = byModel.reduce((total, model) => total + model.estimatedCostUsd, 0)
 
   return {
     available: true,
@@ -405,5 +405,5 @@ export async function getUsageSummary({
       outputTokens: row.output_tokens,
       latencyMs: row.latency_ms,
     })),
-  };
+  }
 }
