@@ -1,5 +1,6 @@
 {
   "dependencies": {
+    "@aws-sdk/client-bedrock-agent-runtime": "^3.1107.0",
     "@aws-sdk/client-bedrock-runtime": "^3.1095.0",
     "cors": "^2.8.6",
     "csv-parse": "^7.0.1",

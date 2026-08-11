@@ -108,6 +108,7 @@ export async function initUsageStore() {
          ts                 TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
          raw_query          TEXT    NOT NULL,
          reformulated_query TEXT,
+         route              TEXT,
          sql_query          TEXT,
          row_count          INTEGER,
          response           TEXT,
@@ -117,6 +118,11 @@ export async function initUsageStore() {
          latency_ms         INTEGER
        )`
     )
+    // Older usage.db files pre-date the hybrid router; add the column if missing.
+    const requestLogColumns = await all(database, 'PRAGMA table_info(request_log)')
+    if (!requestLogColumns.some((column) => column.name === 'route')) {
+      await run(database, 'ALTER TABLE request_log ADD COLUMN route TEXT')
+    }
     await run(database, 'CREATE INDEX IF NOT EXISTS idx_request_log_ts ON request_log(ts)')
 
     await run(
@@ -190,10 +196,11 @@ export function elapsedMs() {
  * @param {{
  *   rawQuery: string,
  *   reformulatedQuery?: string | null,
+ *   route?: "directory" | "policy" | "out_of_scope" | null,
  *   sqlQuery?: string | null,
  *   rowCount?: number | null,
  *   response?: string | null,
- *   outcome: "ok" | "out_of_scope" | "repaired" | "error",
+ *   outcome: "ok" | "out_of_scope" | "repaired" | "error" | "kb_no_hit",
  * }} entry
  * @returns {Promise<void>}
  */
@@ -212,11 +219,12 @@ export async function saveRequestLog(entry) {
     const result = await run(
       database,
       `INSERT INTO request_log
-         (raw_query, reformulated_query, sql_query, row_count, response, outcome, input_tokens, output_tokens, latency_ms)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         (raw_query, reformulated_query, route, sql_query, row_count, response, outcome, input_tokens, output_tokens, latency_ms)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         entry.rawQuery,
         entry.reformulatedQuery ?? null,
+        entry.route ?? null,
         entry.sqlQuery ?? null,
         entry.rowCount ?? null,
         entry.response ?? null,
@@ -289,6 +297,14 @@ export async function getUsageSummary({
     'SELECT outcome, COUNT(*) AS request_count FROM request_log GROUP BY outcome ORDER BY request_count DESC'
   )
 
+  const routeRows = await all(
+    database,
+    `SELECT COALESCE(route, 'unknown') AS route, COUNT(*) AS request_count
+       FROM request_log
+      GROUP BY route
+      ORDER BY request_count DESC`
+  )
+
   const modelRows = await all(
     database,
     `SELECT model_id,
@@ -351,7 +367,7 @@ export async function getUsageSummary({
   const recentRequests = includeRecent
     ? await all(
         database,
-        `SELECT id, ts, raw_query, reformulated_query, response, outcome,
+        `SELECT id, ts, raw_query, reformulated_query, route, response, outcome,
                 input_tokens, output_tokens, row_count, latency_ms
            FROM request_log
           ORDER BY id DESC
@@ -385,6 +401,10 @@ export async function getUsageSummary({
       outcome: row.outcome,
       requestCount: row.request_count,
     })),
+    byRoute: routeRows.map((row) => ({
+      route: row.route,
+      requestCount: row.request_count,
+    })),
     daily: dailyRows.map((row) => ({
       day: row.day,
       requestCount: row.request_count,
@@ -398,6 +418,7 @@ export async function getUsageSummary({
       timestamp: row.ts,
       query: row.reformulated_query || row.raw_query,
       rawQuery: row.raw_query,
+      route: row.route,
       response: row.response,
       outcome: row.outcome,
       rowCount: row.row_count,

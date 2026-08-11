@@ -93,22 +93,22 @@ function initTextareaActions() {
     marked.use({ renderer })
     let htmlContent = marked.parse(text)
 
-    // 2. Append Sources if they exist
+    // 2. Append Sources if they exist. Backend sends { name, url }; only http(s) urls are linked.
     if (sources.length > 0) {
       htmlContent += `<div class="source-header">Sources:</div>`
       sources.forEach((source) => {
-        // source is now an object: { name, url }
-        if (source.url) {
-          // If we have a URL, make it a real link
-          htmlContent += `<a href="${source.url}" target="_blank" class="source-link">📖 ${source.name}</a>`
+        const name = typeof source?.name === 'string' ? source.name.trim() : ''
+        const url = typeof source?.url === 'string' ? source.url.trim() : ''
+        if (!name && !url) return
+        const label = name || url
+        if (/^https?:\/\//i.test(url)) {
+          htmlContent += `<a href="${url}" target="_blank" rel="noopener noreferrer" class="source-link">📖 ${label}</a>`
         } else {
-          // Fallback for sources without source.url: name is a link to a local file path.  Extract a readable title from it
-          const title = source.name.split('/').pop().replace('.html', '').replace(/-/g, ' ')
-          htmlContent += `<a href="${source.name}" target="_blank" class="source-link">📖 ${title}</a>`
+          htmlContent += `<span class="source-link">📖 ${label}</span>`
         }
       })
     }
-    const ALLOWED_ATTR = ['href', 'src', 'alt', 'title', 'class', 'target']
+    const ALLOWED_ATTR = ['href', 'src', 'alt', 'title', 'class', 'target', 'rel']
     msgDiv.innerHTML = DOMPurify.sanitize(htmlContent, { ALLOWED_ATTR })
 
     // Remove any previous spacer

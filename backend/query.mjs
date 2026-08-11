@@ -3,8 +3,10 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import sqlite3 from 'sqlite3'
 import { BedrockRuntimeClient, ConverseCommand } from '@aws-sdk/client-bedrock-runtime'
-import { createInterface } from 'node:readline/promises'
-import { stdin as input, stdout as output } from 'node:process'
+import {
+  BedrockAgentRuntimeClient,
+  RetrieveAndGenerateCommand,
+} from '@aws-sdk/client-bedrock-agent-runtime'
 import express from 'express'
 import cors from 'cors'
 import { createHttpTerminator } from 'http-terminator'
@@ -17,8 +19,10 @@ import {
   getUsageSummary,
 } from './usage.mjs'
 /**
- * HTTP API for natural-language querying over the retrofit SQLite directory.
- * It uses Bedrock-hosted models to generate SQL and natural-language answers.
+ * HTTP API for natural-language querying over the retrofit SQLite directory
+ * and Bedrock Knowledge Base policy documents.
+ * It uses Bedrock-hosted models to route intent, generate SQL, retrieve
+ * policy passages, and produce natural-language answers.
  */
 
 const VERBOSE = true // set to false to suppress console logging of queries and results
@@ -27,14 +31,23 @@ const SCHEMA_PATH = path.join(path.dirname(fileURLToPath(import.meta.url)), 'dir
 const BEDROCK_REGION = 'eu-west-2'
 const BEDROCK_MODEL_ID = 'eu.anthropic.claude-haiku-4-5-20251001-v1:0'
 const CHEAP_MODEL_ID = 'qwen.qwen3-235b-a22b-2507-v1:0'
+/** Unstructured policy corpus (S3-backed Bedrock Knowledge Base). */
+const KNOWLEDGE_BASE_ID = 'WTVA5TOLIX'
+/**
+ * Model ARN/id passed to RetrieveAndGenerate. Cross-region inference profile
+ * ids (eu.anthropic...) are accepted as the modelArn value in recent Agents Runtime APIs.
+ */
+const KB_GENERATION_MODEL_ARN = BEDROCK_MODEL_ID
 const SQL_MAX_TOKENS = 300
 const ANSWER_MAX_TOKENS = 2000
 const WRAPPER_MAX_TOKENS = 220
 const REFORMULATE_MAX_TOKENS = 120
+const ROUTE_MAX_TOKENS = 20
 const MAX_HISTORY_TURNS = 6
 const MAX_QUERY_LENGTH = 500
 const MAX_QUERY_LENGTH_WITH_CONTEXT = 1000
 const LONG_LIST_THRESHOLD = 25
+const VALID_INTENTS = new Set(['directory', 'policy', 'out_of_scope'])
 const CANONICAL_LLM_COLUMNS = [
   'org_name',
   'org_main_type',
@@ -53,7 +66,9 @@ const CANONICAL_LLM_COLUMNS = [
   'employee_count_band',
 ]
 const OUT_OF_SCOPE_RESPONSE =
-  'I can only answer questions about organisations in the Retrofit Directory. Please ask about organisations, locations, activities, specialisms, or types.'
+  'I can answer questions about organisations in the Retrofit Directory (locations, activities, specialisms, types, and contacts) and about UK retrofit policy, regulations, and guidance from the uploaded policy documents. Please ask about one of those topics.'
+const POLICY_NO_HIT_RESPONSE =
+  'I could not find relevant information in the retrofit policy documents for that question. Try rephrasing, or ask about a specific scheme, strategy, or regulation (for example ECO, Green Deal, fuel poverty, or heat and buildings policy).'
 
 class UnsafeSqlError extends Error {
   /**
@@ -68,6 +83,7 @@ class UnsafeSqlError extends Error {
 process.title = 'retrofit-query-server'
 
 const bedrock = new BedrockRuntimeClient({ region: BEDROCK_REGION })
+const bedrockAgent = new BedrockAgentRuntimeClient({ region: BEDROCK_REGION })
 
 const app = express()
 const PORT = process.env.PORT || 5001
@@ -101,7 +117,7 @@ async function start() {
   // Start the server
   server = app.listen(PORT, '127.0.0.1', () => {
     console.log(
-      `Proxy server running on http://localhost:${PORT}, using models ${BEDROCK_MODEL_ID} and ${CHEAP_MODEL_ID} in ${BEDROCK_REGION} region`
+      `Proxy server running on http://localhost:${PORT}, using models ${BEDROCK_MODEL_ID} and ${CHEAP_MODEL_ID} in ${BEDROCK_REGION}; knowledge base ${KNOWLEDGE_BASE_ID}`
     )
   })
   httpTerminator = createHttpTerminator({ server })
@@ -528,10 +544,14 @@ async function reformulateUserQueryToIncludePreviousContext(messages, lastUserMe
   const transcript = formatConversationTranscript(messages)
   if (!transcript) return lastUserMessage
 
-  const prompt = `Rewrite the user's latest question as a single standalone question about a directory of UK retrofit organisations.
+  const prompt = `Rewrite the user's latest question as a single standalone question about UK housing retrofit.
+
+    The assistant can answer two kinds of questions:
+    (1) lookups in a directory of UK retrofit organisations, and
+    (2) questions about UK retrofit policy, regulations, schemes, and guidance documents.
 
     Rules:
-    - Resolve pronouns and elliptical references (e.g. "and in Manchester?") using the conversation below.
+    - Resolve pronouns and elliptical references (e.g. "and in Manchester?" or "what does that strategy say about ECO?") using the conversation below.
     - Preserve the user's intent exactly; do not answer the question, add filters, or invent details.
     - If the latest question is already self-contained, return it unchanged.
     - Output ONLY the rewritten question on a single line, with no preface, labels, quotes, or explanation.
@@ -564,6 +584,225 @@ async function reformulateUserQueryToIncludePreviousContext(messages, lastUserMe
   }
 }
 
+/**
+ * Classify whether the user wants a directory (SQL) lookup, policy-document RAG,
+ * or something outside both scopes. Defaults to directory on failure so existing
+ * organisation queries keep working if the router is unavailable.
+ * @param {string} userQuery
+ * @returns {Promise<'directory' | 'policy' | 'out_of_scope'>}
+ */
+async function classifyQueryIntent(userQuery) {
+  const prompt = `Classify the user's question into exactly one label.
+
+Labels:
+- directory — questions about organisations in the Retrofit Directory: names, counts, locations/counties, organisation types, activities, specialisms, skills, websites, contacts, who works with whom, employee size bands, or other facts stored about listed organisations.
+- policy — questions about UK retrofit / energy-efficiency / fuel-poverty policy, regulations, strategies, schemes, standards, or technical/policy guidance (e.g. ECO, Green Deal, Heat and Buildings Strategy, HECA, EPBD, Code for Sustainable Homes, Ofgem delivery guidance, committee reports).
+- out_of_scope — anything that is neither a directory organisation lookup nor retrofit policy/guidance (e.g. weather, cooking, general coding, unrelated trivia).
+
+Disambiguation:
+- Concrete organisation search/count/list/filter questions → directory.
+- Questions about rules, eligibility, obligations, government strategy, or what a named policy document says → policy, even if they mention "organisations" in the abstract.
+- If both could apply but the primary ask is organisation data, choose directory.
+- If unsure between directory and policy, prefer directory.
+
+Output ONLY one label with no punctuation or explanation: directory OR policy OR out_of_scope.
+
+User question: "${userQuery}"
+Label:`
+
+  try {
+    const raw = await invokeBedrock(prompt, 0.0, ROUTE_MAX_TOKENS, {
+      modelId: BEDROCK_MODEL_ID,
+      stage: 'route',
+    })
+    const normalised = raw
+      .replace(/<think>[\s\S]*?<\/think>/gi, '')
+      .toLowerCase()
+      .replace(/[^a-z_]/g, ' ')
+      .trim()
+    const token = normalised.split(/\s+/).find((part) => VALID_INTENTS.has(part))
+    if (token) return /** @type {'directory' | 'policy' | 'out_of_scope'} */ (token)
+    logAPICalls('Intent classifier returned unrecognised label; defaulting to directory:', raw)
+    return 'directory'
+  } catch (error) {
+    logAPICalls(`Intent classification failed, defaulting to directory: ${error?.message || error}`)
+    return 'directory'
+  }
+}
+
+/**
+ * Read a string metadata field from a KB citation reference.
+ * Bedrock may flatten sidecar attributes at the top level or nest them.
+ * @param {Record<string, unknown>} metadata
+ * @param {string[]} keys
+ * @returns {string}
+ */
+function metadataString(metadata, keys) {
+  const bags = [metadata]
+  if (metadata && typeof metadata === 'object' && metadata.metadataAttributes) {
+    bags.push(/** @type {Record<string, unknown>} */ (metadata.metadataAttributes))
+  }
+  for (const bag of bags) {
+    if (!bag || typeof bag !== 'object') continue
+    for (const key of keys) {
+      const value = bag[key]
+      if (typeof value === 'string' && value.trim()) return value.trim()
+    }
+  }
+  return ''
+}
+
+/**
+ * True when the URL is safe to expose as a browser link (http/https only).
+ * S3 URIs are not valid hrefs for end users.
+ * @param {string} url
+ * @returns {boolean}
+ */
+function isBrowserUrl(url) {
+  return /^https?:\/\//i.test(url)
+}
+
+/**
+ * Build a user-facing source list from RetrieveAndGenerate citations.
+ * Prefers S3 object metadata attributes `display_name` and `url` when present.
+ * @param {any} response
+ * @returns {{ name: string, url: string }[]}
+ */
+function sourcesFromKbCitations(response) {
+  /** @type {Map<string, { name: string, url: string }>} */
+  const byKey = new Map()
+
+  const citations = response?.citations ?? []
+  for (const citation of citations) {
+    const references = citation?.retrievedReferences ?? []
+    for (const reference of references) {
+      const location = reference?.location ?? {}
+      const s3 = location?.s3Location ?? {}
+      const web = location?.webLocation ?? {}
+      const s3Uri = typeof s3.uri === 'string' ? s3.uri : ''
+      const webUrl = typeof web.url === 'string' ? web.url : ''
+      const metadata = reference?.metadata ?? {}
+
+      // Product metadata from *.metadata.json sidecars (preferred for display).
+      const displayName = metadataString(metadata, ['display_name', 'displayName'])
+      const metadataUrl = metadataString(metadata, ['url', 'source_url', 'sourceUrl'])
+      const metadataTitle = metadataString(metadata, [
+        'title',
+        'document_title',
+        'x-amz-bedrock-kb-document-page-content-type',
+        'x-amz-bedrock-kb-title',
+      ])
+
+      let name = displayName || metadataTitle
+      if (!name && s3Uri) {
+        try {
+          const basename = decodeURIComponent(s3Uri.split('/').pop() || '')
+          name =
+            basename
+              .replace(/\.pdf$/i, '')
+              .replace(/[_+]+/g, ' ')
+              .trim() || ''
+        } catch {
+          name = ''
+        }
+      }
+      if (!name && webUrl) name = webUrl
+      if (!name) continue
+
+      // Prefer the human document URL from metadata; never use s3:// as a link href.
+      let url = ''
+      if (isBrowserUrl(metadataUrl)) url = metadataUrl
+      else if (isBrowserUrl(webUrl)) url = webUrl
+      // If we only have an S3 URI, still surface the display name but with an empty
+      // url so the UI does not render a non-navigable s3:// link.
+
+      // Dedupe by stable identity: prefer metadata URL, else name+s3 key.
+      const key = url || s3Uri || name
+      if (!byKey.has(key)) byKey.set(key, { name, url })
+    }
+  }
+
+  return [...byKey.values()]
+}
+
+/**
+ * Answer a policy/guidance question via Bedrock Knowledge Base RAG.
+ * @param {string} userQuery
+ * @returns {Promise<{ answer: string, sources: { name: string, url: string }[], noHit: boolean }>}
+ */
+async function answerFromKnowledgeBase(userQuery) {
+  const response = await bedrockAgent.send(
+    new RetrieveAndGenerateCommand({
+      input: { text: userQuery },
+      retrieveAndGenerateConfiguration: {
+        type: 'KNOWLEDGE_BASE',
+        knowledgeBaseConfiguration: {
+          knowledgeBaseId: KNOWLEDGE_BASE_ID,
+          modelArn: KB_GENERATION_MODEL_ARN,
+          retrievalConfiguration: {
+            vectorSearchConfiguration: {
+              numberOfResults: 6,
+            },
+          },
+          generationConfiguration: {
+            inferenceConfig: {
+              textInferenceConfig: {
+                temperature: 0.2,
+                maxTokens: ANSWER_MAX_TOKENS,
+              },
+            },
+            promptTemplate: {
+              // $output_format_instructions$ is required for Bedrock to attach citations.
+              textPromptTemplate: `You are a helpful assistant for UK housing retrofit policy and guidance.
+Use only the search results to answer the user's question.
+If the search results do not contain enough information, say you could not find relevant information in the policy documents rather than guessing.
+Do not invent organisation directory facts (names, counts, contacts) that are not in the search results.
+Be clear and concise. Prefer UK terminology. Mention document titles when they help the user verify the answer.
+
+Here are the search results in numbered order:
+$search_results$
+
+Here is the user's question:
+$query$
+
+$output_format_instructions$
+`,
+            },
+          },
+        },
+      },
+    })
+  )
+
+  // RetrieveAndGenerate does not always expose Converse-style token usage; record
+  // the call so route mix and latency still appear in the usage dashboard.
+  const usage = response?.usage ?? response?.output?.usage ?? null
+  recordModelCall({
+    stage: 'kb',
+    modelId: BEDROCK_MODEL_ID,
+    inputTokens: usage?.inputTokens ?? usage?.inputTokenCount ?? 0,
+    outputTokens: usage?.outputTokens ?? usage?.outputTokenCount ?? 0,
+  })
+  logAPICalls(`Bedrock KB ${KNOWLEDGE_BASE_ID} (kb): citations=${response?.citations?.length ?? 0}`)
+
+  const answer = (response?.output?.text ?? '').trim()
+  const sources = sourcesFromKbCitations(response)
+  const soundsLikeNoHit =
+    /could not find|don't know|do not know|no (relevant |information|context)|not (enough|sufficient) information|unable to (find|answer)|i'm unable|i am unable/i.test(
+      answer
+    )
+
+  if (!answer || soundsLikeNoHit) {
+    return {
+      answer: answer || POLICY_NO_HIT_RESPONSE,
+      sources: soundsLikeNoHit ? sources : [],
+      noHit: true,
+    }
+  }
+
+  return { answer, sources, noHit: false }
+}
+
 app.post('/api/query', async (req, res) =>
   withUsageCapture(async () => {
     // Accumulated as the request progresses, then persisted once the response has
@@ -571,6 +810,7 @@ app.post('/api/query', async (req, res) =>
     const logEntry = {
       rawQuery: '',
       reformulatedQuery: null,
+      route: null,
       sqlQuery: null,
       rowCount: null,
       response: null,
@@ -595,11 +835,9 @@ app.post('/api/query', async (req, res) =>
       }
       const lastContent = messages[messages.length - 1]?.content
       if (!Array.isArray(lastContent) || lastContent.length === 0) {
-        return res
-          .status(400)
-          .json({
-            error: "Invalid request body: last message must have a non-empty 'content' array",
-          })
+        return res.status(400).json({
+          error: "Invalid request body: last message must have a non-empty 'content' array",
+        })
       }
       let userQuery = lastContent[0]?.query
       logAPICalls('Received query:', userQuery)
@@ -625,6 +863,30 @@ app.post('/api/query', async (req, res) =>
       // Sanitise: strip characters that could break prompt string delimiters.
       const safeQuery = userQuery.replace(/["\\]/g, ' ').trim()
 
+      const intent = await classifyQueryIntent(safeQuery)
+      logEntry.route = intent
+      logAPICalls('Classified intent:', intent)
+
+      if (intent === 'out_of_scope') {
+        logEntry.outcome = 'out_of_scope'
+        logEntry.response = OUT_OF_SCOPE_RESPONSE
+        return respondAndLog({ response: OUT_OF_SCOPE_RESPONSE, sources: [] })
+      }
+
+      if (intent === 'policy') {
+        const { answer, sources, noHit } = await answerFromKnowledgeBase(safeQuery)
+        logEntry.response = answer
+        logEntry.outcome = noHit ? 'kb_no_hit' : 'ok'
+        logAPICalls('Policy KB answer:', {
+          safeQuery,
+          noHit,
+          sourceCount: sources.length,
+          answerPreview: answer.slice(0, 240),
+        })
+        return respondAndLog({ response: answer, sources })
+      }
+
+      // Directory path: text-to-SQL over the organisation survey database.
       const generatedSqlQuery = await generateSqlFromQuery(safeQuery)
       let sqlQuery = alignCanonicalColumnsToLlmView(generatedSqlQuery)
       sqlQuery = enforceDistinctForOrgNameLists(sqlQuery)
@@ -638,10 +900,7 @@ app.post('/api/query', async (req, res) =>
           logAPICalls('Out-of-scope or non-SQL query response:', { safeQuery, generatedSqlQuery })
           logEntry.outcome = 'out_of_scope'
           logEntry.response = OUT_OF_SCOPE_RESPONSE
-          return respondAndLog({
-            response: OUT_OF_SCOPE_RESPONSE,
-            sources: [{ name: 'Retrofit Directory', url: 'https://retrofit-directory.org.uk' }],
-          })
+          return respondAndLog({ response: OUT_OF_SCOPE_RESPONSE, sources: [] })
         }
         throw error
       }
@@ -663,10 +922,7 @@ app.post('/api/query', async (req, res) =>
             logAPICalls('Out-of-scope after SQL repair attempt:', { safeQuery, repairedSql })
             logEntry.outcome = 'out_of_scope'
             logEntry.response = OUT_OF_SCOPE_RESPONSE
-            return respondAndLog({
-              response: OUT_OF_SCOPE_RESPONSE,
-              sources: [{ name: 'Retrofit Directory', url: 'https://retrofit-directory.org.uk' }],
-            })
+            return respondAndLog({ response: OUT_OF_SCOPE_RESPONSE, sources: [] })
           }
           throw error
         }
@@ -684,6 +940,7 @@ app.post('/api/query', async (req, res) =>
         : await generateNaturalLanguageAnswer(safeQuery, sqlQuery, rawResults)
 
       // Return only the natural-language answer; SQL and raw rows are logged server-side only.
+      // Directory answers keep sources empty by product choice.
       logAPICalls('Query processed:', {
         safeQuery,
         sqlQuery,
@@ -695,8 +952,6 @@ app.post('/api/query', async (req, res) =>
       logEntry.response = answer
       logEntry.outcome = repaired ? 'repaired' : 'ok'
 
-      /* Don't bother to send the source since so far the only source is the Directory.  Later, when we add more sources, we'll reinstate this */
-      //    res.json({ response: answer, sources: [{ name: "Retrofit Directory", url: "https://retrofit-directory.org.uk" }] });
       await respondAndLog({ response: answer, sources: [] })
     } catch (error) {
       console.error('Error processing query:', error)
@@ -733,6 +988,7 @@ app.post('/api/observe', async (req, res) => {
  */
 function logAPICalls(message, ...details) {
   if (!VERBOSE) return
-  const timestamp = new Date().toLocaleString()
+  const d = new Date()
+  const timestamp = `${d.toLocaleTimeString()}:${d.getMilliseconds()}`
   console.log(`[${timestamp}] ${message}`, ...details)
 }
