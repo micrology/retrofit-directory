@@ -90,7 +90,14 @@ const PORT = process.env.PORT || 5001
 
 app.set('trust proxy', 1) // trust first proxy, if behind a proxy
 app.use(
-  cors({ origin: ['https://retrofit-directory.org.uk', 'http://localhost', 'http://127.0.0.1'] })
+  cors({
+    origin: [
+      'https://retrofit-directory.org.uk',
+      'https://www.retrofit-directory.org.uk',
+      'http://localhost',
+      'http://127.0.0.1',
+    ],
+  })
 )
 app.use(express.json({ limit: '8kb' }))
 

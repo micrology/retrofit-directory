@@ -36,12 +36,15 @@ function initTextareaActions() {
 
   const isLocal =
     window.location.hostname === '127.0.0.1' || window.location.hostname === 'localhost'
+  // Use the current host in production so apex and www both stay same-origin
+  // when Apache proxies /retrofit on each host. CORS still allows cross-host
+  // fallback if one host is used for the page and the other for the API.
   const API_BASE_URL = isLocal
     ? 'http://localhost:5001/api'
-    : 'https://retrofit-directory.org.uk/retrofit'
+    : `${window.location.origin}/retrofit`
   const IMAGE_BASE_URL = isLocal
     ? 'http://localhost:5001/api'
-    : 'https://retrofit-directory.org.uk/retrofit'
+    : `${window.location.origin}/retrofit`
 
   async function sendMessage(prompt = '') {
     const message = prompt || userInput.value.trim()

@@ -166,6 +166,12 @@ allowed_header=$(curl -s -D - -H "Origin: https://retrofit-directory.org.uk" \
 check "allowed origin receives Access-Control-Allow-Origin" \
   "https://retrofit-directory.org.uk" "$allowed_header"
 
+www_header=$(curl -s -D - -H "Origin: https://www.retrofit-directory.org.uk" \
+  -H "Content-Type: application/json" -X POST -d '{}' "$BASE" \
+  | grep -i "access-control-allow-origin" | tr -d '\r' | awk '{print $2}')
+check "www origin receives Access-Control-Allow-Origin" \
+  "https://www.retrofit-directory.org.uk" "$www_header"
+
 bad_header=$(curl -s -D - -H "Origin: https://malicious-site.com" \
   -H "Content-Type: application/json" -X POST -d '{}' "$BASE" \
   | grep -i "access-control-allow-origin" | tr -d '\r' | awk '{print $2}')

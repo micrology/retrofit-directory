@@ -1,1 +1,43 @@
 AddType application/javascript .mjs
+
+# Serve the site under /website/ on both apex and www.
+# Do not force a canonical host redirect — both hosts are allowed.
+
+<IfModule mod_headers.c>
+  # Prevent MIME-type sniffing
+  Header always set X-Content-Type-Options "nosniff"
+
+  # Clickjacking protection
+  Header always set X-Frame-Options "SAMEORIGIN"
+
+  # Control referrer information
+  Header always set Referrer-Policy "strict-origin-when-cross-origin"
+
+  # Restrict browser features / powerful APIs
+  Header always set Permissions-Policy "accelerometer=(), camera=(), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), payment=(), usb=()"
+
+  # Enforce HTTPS (browsers only apply after first HTTPS visit)
+  Header always set Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+
+  # Content Security Policy
+  # - Both apex and www are valid site hosts ('self' covers whichever is used)
+  # - API/image base URL in JS is hardcoded to the apex host, so allow it
+  #   explicitly when the page is loaded from www
+  # - jsDelivr for oat/marked/DOMPurify; localhost for local API dev
+  Header always set Content-Security-Policy "default-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'; object-src 'none'; img-src 'self' data: https://retrofit-directory.org.uk https://www.retrofit-directory.org.uk https:; font-src 'self' https://cdn.jsdelivr.net data:; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; connect-src 'self' https://retrofit-directory.org.uk https://www.retrofit-directory.org.uk https://cdn.jsdelivr.net http://localhost:5001 http://127.0.0.1:5001; upgrade-insecure-requests"
+
+  # Limit cross-origin window / resource abuse
+  Header always set Cross-Origin-Opener-Policy "same-origin"
+  Header always set Cross-Origin-Resource-Policy "same-origin"
+  Header always set X-Permitted-Cross-Domain-Policies "none"
+</IfModule>
+
+# Disable directory listing
+Options -Indexes
+
+# Block access to dotfiles (e.g. .git, .env); .htaccess itself is already protected by Apache
+<IfModule mod_authz_core.c>
+  <FilesMatch "^\.(?!well-known)">
+    Require all denied
+  </FilesMatch>
+</IfModule>

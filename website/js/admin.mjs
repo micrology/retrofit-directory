@@ -19,9 +19,10 @@ const UNLOCK_STORAGE_KEY = 'retrofit_admin_unlocked_at'
 const UNLOCK_TTL_MS = 30 * 24 * 60 * 60 * 1000 // 30 days
 
 const isLocal = window.location.hostname === '127.0.0.1' || window.location.hostname === 'localhost'
+// Prefer same-origin API on whichever host serves the page (apex or www).
 const API_BASE_URL = isLocal
   ? 'http://localhost:5001/api'
-  : 'https://retrofit-directory.org.uk/retrofit'
+  : `${window.location.origin}/retrofit`
 
 const integerFormatter = new Intl.NumberFormat('en-GB')
 const costFormatter = new Intl.NumberFormat('en-GB', {

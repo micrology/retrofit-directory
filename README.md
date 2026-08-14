@@ -246,11 +246,9 @@ Apache TLS proxy.
 CORS is currently restricted to the following allowed origins:
 
 - `https://retrofit-directory.org.uk`
+- `https://www.retrofit-directory.org.uk`
 - `http://localhost`
 - `http://127.0.0.1`
-
-`https://www.retrofit-directory.org.uk` is not currently in the backend allow
-list and should be added if that host is expected to call `/api/query`.
 
 ### Clean error responses
 
