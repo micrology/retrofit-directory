@@ -8,14 +8,90 @@
  * Usage:
  *   node generate-policy-metadata.js
  *   node generate-policy-metadata.js --dry-run
+ *   node generate-policy-metadata.js [rdf-path]
+ *   node generate-policy-metadata.js --rdf <path>
+ *   node generate-policy-metadata.js --rdf=<path>
  */
 
 const fs = require("fs");
 const path = require("path");
 
 const POLICIES_DIR = path.join(__dirname, "Policies");
-const RDF_PATH = path.join(POLICIES_DIR, "Policy documents_v3.rdf");
-const DRY_RUN = process.argv.includes("--dry-run");
+const DEFAULT_RDF_PATH = path.join(POLICIES_DIR, "Policy documents_v3.rdf");
+
+function parseArgs(argv) {
+  const args = argv.slice(2);
+  let dryRun = false;
+  let rdfPath = null;
+  const positionals = [];
+
+  for (let i = 0; i < args.length; i += 1) {
+    const arg = args[i];
+    if (arg === "--dry-run") {
+      dryRun = true;
+      continue;
+    }
+    if (arg === "--rdf" || arg === "--rdf-path") {
+      const value = args[i + 1];
+      if (!value || value.startsWith("-")) {
+        console.error(`Missing value for ${arg}`);
+        process.exit(1);
+      }
+      rdfPath = value;
+      i += 1;
+      continue;
+    }
+    if (arg.startsWith("--rdf=") || arg.startsWith("--rdf-path=")) {
+      rdfPath = arg.slice(arg.indexOf("=") + 1);
+      if (!rdfPath) {
+        console.error(`Missing value for ${arg.split("=")[0]}`);
+        process.exit(1);
+      }
+      continue;
+    }
+    if (arg === "--help" || arg === "-h") {
+      console.log(`Usage: node generate-policy-metadata.js [options] [rdf-path]
+
+Options:
+  --rdf, --rdf-path <path>  Path to Zotero RDF/XML export (default: ${DEFAULT_RDF_PATH})
+  --dry-run                 Print metadata without writing files
+  -h, --help                Show this help
+
+A bare positional argument is treated as the RDF path.`);
+      process.exit(0);
+    }
+    if (arg.startsWith("-")) {
+      console.error(`Unknown option: ${arg}`);
+      process.exit(1);
+    }
+    positionals.push(arg);
+  }
+
+  if (positionals.length > 1) {
+    console.error(
+      `Too many positional arguments: ${positionals.join(", ")}`
+    );
+    process.exit(1);
+  }
+
+  if (rdfPath && positionals.length === 1) {
+    console.error(
+      "RDF path provided both as a flag and as a positional argument"
+    );
+    process.exit(1);
+  }
+
+  if (!rdfPath && positionals.length === 1) {
+    rdfPath = positionals[0];
+  }
+
+  return {
+    dryRun,
+    rdfPath: path.resolve(rdfPath || DEFAULT_RDF_PATH),
+  };
+}
+
+const { dryRun: DRY_RUN, rdfPath: RDF_PATH } = parseArgs(process.argv);
 
 function decodeXmlEntities(value) {
   if (!value) return "";
@@ -174,13 +250,56 @@ function extractLinkedAttachmentIds(itemBody) {
 }
 
 function attachmentFilename(attachmentBody) {
+  // Prefer Zotero file path when present:
   // <z:path rdf:resource="files/5657/Some File.pdf"/>
   const pathMatch = attachmentBody.match(
     /<z:path\b[^>]*\brdf:resource="([^"]+)"[^>]*\/?>/i
   );
-  if (!pathMatch) return "";
-  const resourcePath = decodeXmlEntities(pathMatch[1]);
-  return path.basename(resourcePath);
+  if (pathMatch) {
+    const resourcePath = decodeXmlEntities(pathMatch[1]);
+    return path.basename(resourcePath);
+  }
+
+  // Lightweight RDF exports often omit z:path and only set dc:title
+  // (e.g. "PAS2030_2023" for PAS2030_2023.pdf).
+  const title = textContent(attachmentBody, "dc:title");
+  if (!title) return "";
+  const linkType = textContent(attachmentBody, "link:type");
+  const looksLikePdf =
+    /\.pdf$/i.test(title) ||
+    /pdf/i.test(linkType) ||
+    // Bare basenames without extension still match local PDFs via pdfMatchKey.
+    /^[\w.-]+$/i.test(title);
+  return looksLikePdf ? title : "";
+}
+
+/** Normalize for matching: RDF may omit the .pdf suffix that local files have. */
+function pdfMatchKey(filename) {
+  const base = path.basename(String(filename || "")).trim();
+  if (!base) return "";
+  return base.toLowerCase().endsWith(".pdf")
+    ? base.slice(0, -4)
+    : base;
+}
+
+function getMetadataForPdf(byFilename, pdfName) {
+  if (byFilename.has(pdfName)) return byFilename.get(pdfName);
+  const key = pdfMatchKey(pdfName);
+  if (!key) return undefined;
+  for (const [rdfName, meta] of byFilename) {
+    if (pdfMatchKey(rdfName) === key) return meta;
+  }
+  return undefined;
+}
+
+function hasLocalPdfForRdfName(localSet, rdfName) {
+  if (localSet.has(rdfName)) return true;
+  const key = pdfMatchKey(rdfName);
+  if (!key) return false;
+  for (const localName of localSet) {
+    if (pdfMatchKey(localName) === key) return true;
+  }
+  return false;
 }
 
 function buildDisplayName({ authors, year, title }) {
@@ -311,7 +430,7 @@ function main() {
   const missing = [];
 
   for (const pdfName of pdfFiles) {
-    const meta = byFilename.get(pdfName);
+    const meta = getMetadataForPdf(byFilename, pdfName);
     if (!meta) {
       missing.push(pdfName);
       continue;
@@ -344,9 +463,11 @@ function main() {
     process.exitCode = 1;
   }
 
-  // Helpful: RDF attachments with no local PDF
+  // Helpful: RDF attachments with no local PDF (allow missing .pdf suffix in RDF)
   const localSet = new Set(pdfFiles);
-  const orphanRdf = [...byFilename.keys()].filter((name) => !localSet.has(name));
+  const orphanRdf = [...byFilename.keys()].filter(
+    (name) => !hasLocalPdfForRdfName(localSet, name)
+  );
   if (orphanRdf.length) {
     console.warn(
       `\nNote: ${orphanRdf.length} RDF attachment PDF(s) have no matching local file:`
