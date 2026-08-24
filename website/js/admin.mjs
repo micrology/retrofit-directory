@@ -1,28 +1,21 @@
 /**
  * Admin dashboard for the Retrofit Directory query service.
  *
- * Fetches the usage summary from POST /api/observe and renders it as formatted
- * tables inside #admin-content. Also owns the client-side password gate.
+ * Fetches the usage summary from POST /api/observe (Bearer token) and renders
+ * it as formatted tables inside #admin-content. Also owns the unlock UI.
  *
  * All cell content is written with textContent rather than innerHTML: the
  * recent-query rows contain user-submitted text and must never be parsed as
  * markup.
  */
 
-const PASSWORD = 'retrofit-admin' // Intentionally simple deterrent only.
 const RECENT_LIMIT = 100
-
-// A successful unlock is remembered so the password is not required on every
-// visit. Only a timestamp is stored, never the password itself, and it lapses
-// after the period below so an unattended browser does not stay open forever.
+const TOKEN_STORAGE_KEY = 'retrofit_admin_token'
 const UNLOCK_STORAGE_KEY = 'retrofit_admin_unlocked_at'
-const UNLOCK_TTL_MS = 30 * 24 * 60 * 60 * 1000 // 30 days
+const UNLOCK_TTL_MS = 12 * 60 * 60 * 1000 // 12 hours
 
 const isLocal = window.location.hostname === '127.0.0.1' || window.location.hostname === 'localhost'
-// Prefer same-origin API on whichever host serves the page (apex or www).
-const API_BASE_URL = isLocal
-  ? 'http://localhost:5001/api'
-  : `${window.location.origin}/retrofit`
+const API_BASE_URL = isLocal ? 'http://localhost:5001/api' : `${window.location.origin}/retrofit`
 
 const integerFormatter = new Intl.NumberFormat('en-GB')
 const costFormatter = new Intl.NumberFormat('en-GB', {
@@ -31,8 +24,6 @@ const costFormatter = new Intl.NumberFormat('en-GB', {
   minimumFractionDigits: 4,
   maximumFractionDigits: 4,
 })
-// Cheap models can cost a few hundredths of a cent, which 4 decimals would
-// round away to zero; fall back to this only for such small values.
 const smallCostFormatter = new Intl.NumberFormat('en-GB', {
   style: 'currency',
   currency: 'USD',
@@ -41,60 +32,67 @@ const smallCostFormatter = new Intl.NumberFormat('en-GB', {
 })
 const SMALL_COST_THRESHOLD_USD = 0.001
 
-/**
- * Read the stored unlock time. Storage access can throw when cookies/storage
- * are blocked, in which case the gate simply falls back to asking every time.
- * @returns {number | null} Epoch milliseconds, or null if absent/unreadable.
- */
-function readUnlockTime() {
+/** @returns {string | null} */
+function readStoredToken() {
   try {
-    const raw = window.localStorage.getItem(UNLOCK_STORAGE_KEY)
-    if (!raw) return null
-    const timestamp = Number(raw)
-    return Number.isFinite(timestamp) ? timestamp : null
+    return window.sessionStorage.getItem(TOKEN_STORAGE_KEY)
   } catch {
     return null
   }
 }
 
-/** @returns {void} */
-function rememberUnlock() {
+/** @param {string} token @returns {void} */
+function storeToken(token) {
   try {
-    window.localStorage.setItem(UNLOCK_STORAGE_KEY, String(Date.now()))
+    window.sessionStorage.setItem(TOKEN_STORAGE_KEY, token)
+    window.sessionStorage.setItem(UNLOCK_STORAGE_KEY, String(Date.now()))
   } catch {
-    // Storage unavailable; the unlock just will not persist.
+    // Session storage unavailable; unlock lasts for this page load only.
   }
 }
 
 /** @returns {void} */
-function forgetUnlock() {
+function clearStoredToken() {
   try {
-    window.localStorage.removeItem(UNLOCK_STORAGE_KEY)
+    window.sessionStorage.removeItem(TOKEN_STORAGE_KEY)
+    window.sessionStorage.removeItem(UNLOCK_STORAGE_KEY)
   } catch {
-    // Nothing to clean up if storage is unavailable.
+    // Nothing to clean up.
   }
 }
 
 /**
- * Whether a previous unlock is still valid. An expired record is discarded so
- * it cannot linger in storage.
- * @returns {boolean}
+ * Prefer session token; migrate legacy localStorage unlock away (it never held
+ * a server secret and is no longer valid).
+ * @returns {string | null}
  */
-function isUnlockRemembered() {
-  const unlockedAt = readUnlockTime()
-  if (unlockedAt === null) return false
-
-  // A clock change could put the stored time in the future; treat that as stale.
-  const age = Date.now() - unlockedAt
-  if (age < 0 || age > UNLOCK_TTL_MS) {
-    forgetUnlock()
-    return false
+function getRememberedToken() {
+  const token = readStoredToken()
+  if (!token) {
+    try {
+      window.localStorage.removeItem(UNLOCK_STORAGE_KEY)
+    } catch {
+      /* ignore */
+    }
+    return null
   }
-  return true
+
+  try {
+    const raw = window.sessionStorage.getItem(UNLOCK_STORAGE_KEY)
+    const unlockedAt = raw ? Number(raw) : NaN
+    const age = Date.now() - unlockedAt
+    if (!Number.isFinite(unlockedAt) || age < 0 || age > UNLOCK_TTL_MS) {
+      clearStoredToken()
+      return null
+    }
+  } catch {
+    /* keep token for this session if timestamp unreadable */
+  }
+
+  return token
 }
 
 /**
- * Create an element with optional class, text and attributes.
  * @param {string} tag
  * @param {{ className?: string, text?: string, attrs?: Record<string,string> }} [options]
  * @param {Node[]} [children]
@@ -111,12 +109,7 @@ function el(tag, options = {}, children = []) {
   return node
 }
 
-/**
- * Format a count, showing a dash for absent values. Null is meaningful here:
- * an out-of-scope query never reaches the database, so it has no row count.
- * @param {unknown} value
- * @returns {string}
- */
+/** @param {unknown} value @returns {string} */
 function formatInteger(value) {
   if (value === null || value === undefined || value === '') return '—'
   const numeric = Number(value)
@@ -133,11 +126,7 @@ function formatCost(value) {
   return formatter.format(numeric)
 }
 
-/**
- * Render an ISO timestamp as a local date/time, tolerating null.
- * @param {string | null | undefined} isoTimestamp
- * @returns {string}
- */
+/** @param {string | null | undefined} isoTimestamp @returns {string} */
 function formatTimestamp(isoTimestamp) {
   if (!isoTimestamp) return '—'
   const date = new Date(isoTimestamp)
@@ -145,13 +134,6 @@ function formatTimestamp(isoTimestamp) {
 }
 
 /**
- * Build a table from a column specification.
- *
- * `clamp` columns put their text in an inner element, because the CSS used to
- * truncate long values cannot be applied to a <td> without breaking the table
- * layout. Cells carry no `title` tooltip: clamped text is revealed by expanding
- * the row, and every other column either wraps or is short enough to read in
- * full, so a tooltip would only ever restate the visible text.
  * @param {Array<{ label: string, key: string, numeric?: boolean, clamp?: boolean, format?: (value: any, row: any) => string, className?: string }>} columns
  * @param {any[]} rows
  * @returns {HTMLElement}
@@ -179,7 +161,6 @@ function buildTable(columns, rows) {
         if (column.clamp) {
           return el('td', { className: classNames }, [
             el('div', { className: 'admin-clamp', text }),
-            // Hint label; shown by CSS only once the text is known to overflow.
             el('span', { className: 'admin-more-hint', attrs: { 'aria-hidden': 'true' } }),
           ])
         }
@@ -197,24 +178,19 @@ function buildTable(columns, rows) {
 }
 
 /**
- * Wrap content in a titled section, with an optional note under the heading.
  * @param {string} title
  * @param {Node} content
  * @param {string} [note]
  * @returns {HTMLElement}
  */
 function buildSection(title, content, note) {
-  const children = [el('h4', { className: 'admin-section-title', text: title })]
+  const children = [el('h2', { className: 'admin-section-title', text: title })]
   if (note) children.push(el('p', { className: 'admin-note', text: note }))
   children.push(content)
   return el('section', { className: 'admin-section' }, children)
 }
 
-/**
- * Headline totals as a row of stat cards.
- * @param {any} totals
- * @returns {HTMLElement}
- */
+/** @param {any} totals @returns {HTMLElement} */
 function buildTotals(totals) {
   const stats = [
     { label: 'Queries', value: formatInteger(totals.requestCount) },
@@ -236,26 +212,13 @@ function buildTotals(totals) {
   )
 }
 
-/**
- * Toggle the expanded state of one recent-request row.
- * @param {HTMLElement} row
- * @returns {void}
- */
+/** @param {HTMLElement} row @returns {void} */
 function toggleRowExpansion(row) {
   const expanded = row.classList.toggle('is-expanded')
   row.setAttribute('aria-expanded', expanded ? 'true' : 'false')
 }
 
-/**
- * Flag clamped cells whose text is actually cut off, so the "Show more" hint
- * only appears where there is more to see.
- *
- * Overflow can only be measured once the table is laid out, hence the frame
- * delay. If measurement is unavailable the hint is simply omitted; rows stay
- * expandable either way.
- * @param {HTMLElement} table
- * @returns {void}
- */
+/** @param {HTMLElement} table @returns {void} */
 function markOverflowingCells(table) {
   const measure = () => {
     for (const node of table.querySelectorAll('.admin-clamp')) {
@@ -270,11 +233,7 @@ function markOverflowingCells(table) {
   measure()
 }
 
-/**
- * Scrollable list of recent questions and the answers returned.
- * @param {any[]} recentRequests
- * @returns {HTMLElement}
- */
+/** @param {any[]} recentRequests @returns {HTMLElement} */
 function buildRecentRequests(recentRequests) {
   if (recentRequests.length === 0) {
     return el('p', { className: 'admin-note', text: 'No queries recorded yet.' })
@@ -288,7 +247,6 @@ function buildRecentRequests(recentRequests) {
         key: 'query',
         className: 'admin-cell-text',
         clamp: true,
-        // Show the context-resolved question, flagging where it was rewritten.
         format: (value, row) =>
           row.rawQuery && row.rawQuery !== value ? `${value}\n(asked as: ${row.rawQuery})` : value,
       },
@@ -312,8 +270,6 @@ function buildRecentRequests(recentRequests) {
 
   table.classList.add('admin-table-scroll')
 
-  // Rows expand to reveal the full question and answer. Focusable so the
-  // keyboard can reach them, since there is no button to tab to.
   for (const row of table.querySelectorAll('tbody tr')) {
     row.classList.add('admin-row-expandable')
     row.setAttribute('tabindex', '0')
@@ -325,9 +281,8 @@ function buildRecentRequests(recentRequests) {
 }
 
 /**
- * Replace the contents of the admin container with the rendered dashboard.
  * @param {HTMLElement} container
- * @param {any} data Usage summary from /api/observe.
+ * @param {any} data
  * @returns {void}
  */
 function renderDashboard(container, data) {
@@ -338,11 +293,16 @@ function renderDashboard(container, data) {
     text: 'Refresh',
     attrs: { type: 'button', 'data-admin-refresh': 'true' },
   })
+  const lockButton = el('button', {
+    className: 'btn-small btn-small-outline',
+    text: 'Lock',
+    attrs: { type: 'button', 'data-admin-lock': 'true' },
+  })
 
   fragment.append(
     el('div', { className: 'admin-header' }, [
-      el('h3', { className: 'admin-title', text: 'Query usage & cost' }),
-      refreshButton,
+      el('h1', { className: 'admin-title', text: 'Query usage & cost' }),
+      el('div', { className: 'admin-header-actions' }, [refreshButton, lockButton]),
     ])
   )
 
@@ -460,32 +420,82 @@ function renderDashboard(container, data) {
   container.replaceChildren(fragment)
 }
 
+/** @type {string | null} */
+let activeToken = null
+
 /**
- * Fetch the usage summary and render it into #admin-content.
- * @returns {Promise<void>}
+ * @param {string} token
+ * @returns {Promise<any>}
  */
+async function fetchUsage(token) {
+  const response = await fetch(`${API_BASE_URL}/observe`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ includeRecent: true, recentLimit: RECENT_LIMIT }),
+  })
+
+  let payload = null
+  try {
+    payload = await response.json()
+  } catch {
+    payload = null
+  }
+
+  if (response.status === 401 || response.status === 403) {
+    const error = new Error(payload?.error || 'Unauthorized')
+    error.code = 'unauthorized'
+    throw error
+  }
+
+  if (response.status === 503) {
+    const error = new Error(
+      payload?.error || 'Admin access is not configured. Set ADMIN_PASSWORD on the server.'
+    )
+    error.code = 'misconfigured'
+    throw error
+  }
+
+  if (!response.ok) {
+    throw new Error(payload?.error || `Request failed with status ${response.status}`)
+  }
+
+  return payload
+}
+
+/** @returns {Promise<void>} */
 async function populateAdminContent() {
   const container = document.getElementById('admin-content')
   if (!container) return
 
+  if (!activeToken) {
+    container.replaceChildren(
+      el('p', { className: 'admin-note', text: 'Unlock the console to load usage data.' })
+    )
+    return
+  }
+
   container.replaceChildren(el('p', { className: 'admin-note', text: 'Loading usage data…' }))
 
   try {
-    const response = await fetch(`${API_BASE_URL}/observe`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ includeRecent: true, recentLimit: RECENT_LIMIT }),
-    })
-
-    if (!response.ok) {
-      throw new Error(`Request failed with status ${response.status}`)
-    }
-
-    renderDashboard(container, await response.json())
+    const data = await fetchUsage(activeToken)
+    renderDashboard(container, data)
   } catch (error) {
     console.error('Error fetching admin data:', error)
+    if (error?.code === 'unauthorized') {
+      activeToken = null
+      clearStoredToken()
+      showAuthDialog('Incorrect password or session expired. Please try again.')
+      container.replaceChildren(
+        el('p', { className: 'admin-note', text: 'Usage data loads once the console is unlocked.' })
+      )
+      return
+    }
+
     container.replaceChildren(
-      el('h3', { className: 'admin-title', text: 'Query usage & cost' }),
+      el('h1', { className: 'admin-title', text: 'Query usage & cost' }),
       el('p', {
         className: 'admin-error',
         text: `Failed to load admin data: ${error?.message || error}`,
@@ -495,55 +505,114 @@ async function populateAdminContent() {
 }
 
 /**
- * Client-side password gate. A deterrent for casual visitors only; it does not
- * protect /api/observe, which is enforced server-side or not at all.
+ * @param {string} [errorText]
  * @returns {void}
  */
-function initAuthGate() {
-  const overlay = document.getElementById('authModalOverlay')
+function showAuthDialog(errorText) {
+  const dialog = document.getElementById('authDialog')
+  const form = document.getElementById('authForm')
   const input = document.getElementById('authPasswordInput')
-  const submitBtn = document.getElementById('authSubmitBtn')
   const errorMessage = document.getElementById('authErrorMessage')
 
-  if (!overlay || !input || !submitBtn || !errorMessage) return
+  if (!(dialog instanceof HTMLDialogElement) || !form || !input || !errorMessage) return
 
-  const unlock = () => {
-    document.body.classList.remove('auth-locked')
-    overlay.remove()
-    populateAdminContent()
+  document.body.classList.add('auth-locked')
+  errorMessage.textContent = errorText || 'Incorrect password. Please try again.'
+  errorMessage.hidden = !errorText
+  errorMessage.classList.toggle('visible', Boolean(errorText))
+  input.value = ''
+
+  if (!dialog.open) {
+    dialog.showModal()
   }
+  input.focus()
+}
 
-  // Returning visitor within the remembered window: skip the prompt entirely.
-  // The overlay starts hidden in the markup so it never flashes into view.
-  if (isUnlockRemembered()) {
-    unlock()
-    return
+/** @returns {void} */
+function hideAuthDialog() {
+  const dialog = document.getElementById('authDialog')
+  document.body.classList.remove('auth-locked')
+  if (dialog instanceof HTMLDialogElement && dialog.open) {
+    dialog.close()
   }
+}
 
-  const attemptUnlock = () => {
-    if (input.value !== PASSWORD) {
+/** @returns {void} */
+function lockConsole() {
+  activeToken = null
+  clearStoredToken()
+  const container = document.getElementById('admin-content')
+  container?.replaceChildren(
+    el('p', { className: 'admin-note', text: 'Usage data loads once the console is unlocked.' })
+  )
+  showAuthDialog()
+}
+
+/** @returns {void} */
+function initAuthGate() {
+  const dialog = document.getElementById('authDialog')
+  const form = document.getElementById('authForm')
+  const input = document.getElementById('authPasswordInput')
+  const errorMessage = document.getElementById('authErrorMessage')
+
+  if (!(dialog instanceof HTMLDialogElement) || !form || !input || !errorMessage) return
+
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault()
+    const password = input.value
+    if (!password) {
+      errorMessage.textContent = 'Enter the admin password.'
+      errorMessage.hidden = false
       errorMessage.classList.add('visible')
-      input.value = ''
       input.focus()
       return
     }
 
-    rememberUnlock()
-    unlock()
+    const submitBtn = form.querySelector('[type="submit"]')
+    if (submitBtn instanceof HTMLButtonElement) submitBtn.disabled = true
+    errorMessage.hidden = true
+    errorMessage.classList.remove('visible')
+
+    try {
+      await fetchUsage(password)
+      activeToken = password
+      storeToken(password)
+      hideAuthDialog()
+      await populateAdminContent()
+    } catch (error) {
+      if (error?.code === 'unauthorized') {
+        errorMessage.textContent = 'Incorrect password. Please try again.'
+      } else if (error?.code === 'misconfigured') {
+        errorMessage.textContent = error.message
+      } else {
+        errorMessage.textContent = error?.message || 'Could not unlock the console.'
+      }
+      errorMessage.hidden = false
+      errorMessage.classList.add('visible')
+      input.value = ''
+      input.focus()
+    } finally {
+      if (submitBtn instanceof HTMLButtonElement) submitBtn.disabled = false
+    }
+  })
+
+  // Prevent dismissing without a valid unlock (Escape would otherwise close).
+  dialog.addEventListener('cancel', (event) => {
+    event.preventDefault()
+  })
+
+  const remembered = getRememberedToken()
+  if (remembered) {
+    activeToken = remembered
+    populateAdminContent().catch(() => {
+      /* populateAdminContent handles UI errors */
+    })
+    return
   }
 
-  document.body.classList.add('auth-locked')
-  overlay.hidden = false
-  input.focus()
-
-  submitBtn.addEventListener('click', attemptUnlock)
-  input.addEventListener('keydown', (event) => {
-    if (event.key === 'Enter') attemptUnlock()
-  })
+  showAuthDialog()
 }
 
-// Content is rebuilt on every render, so listen at the container instead of
-// binding to elements that will be replaced.
 const adminContainer = document.getElementById('admin-content')
 
 adminContainer?.addEventListener('click', (event) => {
@@ -554,12 +623,14 @@ adminContainer?.addEventListener('click', (event) => {
     return
   }
 
+  if (event.target.closest('[data-admin-lock]')) {
+    lockConsole()
+    return
+  }
+
   const row = event.target.closest('tr.admin-row-expandable')
   if (!row) return
-
-  // Do not collapse a row the user was only dragging across to copy text.
   if (window.getSelection()?.toString()) return
-
   toggleRowExpansion(row)
 })
 
@@ -570,7 +641,7 @@ adminContainer?.addEventListener('keydown', (event) => {
   const row = event.target.closest('tr.admin-row-expandable')
   if (!row) return
 
-  event.preventDefault() // Space would otherwise scroll the page.
+  event.preventDefault()
   toggleRowExpansion(row)
 })
 

@@ -1,10 +1,17 @@
 /**
- * Retrofit Directory Client-side Application Logic
+ * Retrofit Directory client-side application logic
  */
 
 import { marked } from 'https://cdn.jsdelivr.net/npm/marked@18.0.7/+esm'
 import DOMPurify from 'https://cdn.jsdelivr.net/npm/dompurify@3.4.12/+esm'
 import 'https://cdn.jsdelivr.net/npm/@knadh/oat@0.7.1/oat.min.js'
+
+const SUGGESTION_PROMPTS = [
+  "What is 'retrofit'?",
+  'How many organisations related to retrofit are located in Bristol?',
+  'Is there an architect in the database that is located in Hampshire?',
+  'What is PAS2035?',
+]
 
 function showToast(message, variant = 'success', options = {}) {
   if (!window.ot || typeof window.ot.toast !== 'function') return
@@ -18,44 +25,155 @@ function showToast(message, variant = 'success', options = {}) {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
-  initTextareaActions()
-  initCookieConsent()
+  initChat()
+  initCookieNotice()
 })
 
 /**
- * Copy/Save buttons, Canned queries, and Backend Integration
+ * Chat composer, canned queries, and backend integration.
  */
-function initTextareaActions() {
-  const overlay = document.getElementById('processing-overlay')
+function initChat() {
+  const form = document.getElementById('chat-form')
+  const statusEl = document.getElementById('chat-status')
   const sendBtn = document.getElementById('btnSend')
   const copyChat = document.getElementById('btnCopy')
   const newChat = document.getElementById('btnNew')
   const userInput = document.getElementById('user-input')
   const messagesDiv = document.getElementById('chat-messages')
+
+  if (!form || !sendBtn || !copyChat || !newChat || !userInput || !messagesDiv) return
+
   let chatHistory = []
+  let isSending = false
 
   const isLocal =
     window.location.hostname === '127.0.0.1' || window.location.hostname === 'localhost'
-  // Use the current host in production so apex and www both stay same-origin
-  // when Apache proxies /retrofit on each host. CORS still allows cross-host
-  // fallback if one host is used for the page and the other for the API.
   const API_BASE_URL = isLocal
     ? 'http://localhost:5001/api'
     : `${window.location.origin}/retrofit`
-  const IMAGE_BASE_URL = isLocal
-    ? 'http://localhost:5001/api'
-    : `${window.location.origin}/retrofit`
+  const IMAGE_BASE_URL = API_BASE_URL
 
+  /** @param {boolean} busy */
+  function setBusy(busy) {
+    isSending = busy
+    sendBtn.disabled = busy
+    userInput.disabled = busy
+    form.setAttribute('aria-busy', busy ? 'true' : 'false')
+    if (statusEl) {
+      statusEl.hidden = !busy
+      statusEl.textContent = busy ? 'Working on your question…' : ''
+    }
+  }
+
+  function renderSuggestions() {
+    messagesDiv.replaceChildren()
+
+    const prompt = document.createElement('p')
+    prompt.className = 'chat-prompt'
+    prompt.id = 'chat-suggestions-label'
+    prompt.textContent = 'Try one of these, or type your own question:'
+
+    const list = document.createElement('div')
+    list.className = 'action-buttons-row'
+    list.setAttribute('role', 'group')
+    list.setAttribute('aria-labelledby', 'chat-suggestions-label')
+
+    for (const text of SUGGESTION_PROMPTS) {
+      const button = document.createElement('button')
+      button.type = 'button'
+      button.className = 'action-btn'
+      button.textContent = text
+      button.addEventListener('click', () => {
+        userInput.value = text
+        sendMessage(text)
+      })
+      list.append(button)
+    }
+
+    messagesDiv.append(prompt, list)
+  }
+
+  /**
+   * @param {'user' | 'ai'} sender
+   * @param {string} text
+   * @param {Array<{ name?: string, url?: string }>} [sources]
+   */
+  function appendMessage(sender, text, sources = []) {
+    messagesDiv.querySelector('.chat-prompt')?.remove()
+    messagesDiv.querySelector('.action-buttons-row')?.remove()
+
+    const msgDiv = document.createElement('div')
+    msgDiv.className = `message ${sender}-message`
+    msgDiv.setAttribute('role', sender === 'ai' ? 'status' : 'group')
+
+    const renderer = new marked.Renderer()
+    renderer.image = function (token) {
+      let finalHref = token.href
+      if (token.href && token.href.startsWith('/images/')) {
+        finalHref = `${IMAGE_BASE_URL}${token.href}`
+      }
+      const alt = DOMPurify.sanitize(token.text || '', { ALLOWED_TAGS: [] })
+      const title = DOMPurify.sanitize(token.title || '', { ALLOWED_TAGS: [] })
+      return `<img src="${finalHref}" alt="${alt}" title="${title}" class="chat-image" loading="lazy" />`
+    }
+    marked.use({ renderer })
+    let htmlContent = marked.parse(text)
+
+    if (sources.length > 0) {
+      htmlContent += `<div class="source-header">Sources</div><ul class="source-list">`
+      sources.forEach((source) => {
+        const name = typeof source?.name === 'string' ? source.name.trim() : ''
+        const url = typeof source?.url === 'string' ? source.url.trim() : ''
+        if (!name && !url) return
+        const label = name || url
+        const safeLabel = DOMPurify.sanitize(label, { ALLOWED_TAGS: [] })
+        if (/^https?:\/\//i.test(url)) {
+          htmlContent += `<li><a href="${url}" target="_blank" rel="noopener noreferrer" class="source-link">${safeLabel}</a></li>`
+        } else {
+          htmlContent += `<li><span class="source-link source-link--plain">${safeLabel}</span></li>`
+        }
+      })
+      htmlContent += `</ul>`
+    }
+
+    const ALLOWED_ATTR = ['href', 'src', 'alt', 'title', 'class', 'target', 'rel', 'loading']
+    msgDiv.innerHTML = DOMPurify.sanitize(htmlContent, { ALLOWED_ATTR })
+
+    const oldSpacer = messagesDiv.querySelector('.chat-spacer')
+    if (oldSpacer) oldSpacer.remove()
+
+    messagesDiv.appendChild(msgDiv)
+
+    if (sender === 'user') {
+      const spacer = document.createElement('div')
+      spacer.className = 'chat-spacer'
+      spacer.setAttribute('aria-hidden', 'true')
+      spacer.style.height = `${messagesDiv.clientHeight}px`
+      messagesDiv.appendChild(spacer)
+
+      const pageY = window.scrollY
+      msgDiv.scrollIntoView({ block: 'start' })
+      window.scrollTo(0, pageY)
+    } else {
+      msgDiv.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+    }
+  }
+
+  /**
+   * @param {string} [prompt]
+   * @returns {Promise<void>}
+   */
   async function sendMessage(prompt = '') {
-    const message = prompt || userInput.value.trim()
+    if (isSending) return
+
+    const message = (prompt || userInput.value).trim()
     if (!message) return
 
-    // Add User Message to UI and chat history
     chatHistory.push({ role: 'user', content: [{ query: message }] })
     appendMessage('user', message)
     userInput.value = ''
-    userInput.placeholder = 'Ask a follow up or new question...'
-    overlay.style.display = 'block'
+    userInput.placeholder = 'Ask a follow-up or a new question…'
+    setBusy(true)
 
     try {
       const response = await fetch(`${API_BASE_URL}/query`, {
@@ -64,130 +182,84 @@ function initTextareaActions() {
         body: JSON.stringify({ messages: chatHistory }),
       })
 
-      const data = await response.json()
-      console.log('API Response:', data)
-      overlay.style.display = 'none'
+      let data = null
+      try {
+        data = await response.json()
+      } catch {
+        data = null
+      }
+
+      if (!response.ok) {
+        const detail =
+          (data && (data.error || data.message)) || `Request failed (${response.status})`
+        throw new Error(detail)
+      }
+
+      if (!data || typeof data.response !== 'string') {
+        throw new Error('The assistant returned an unexpected response.')
+      }
 
       if (data.error) throw new Error(data.error)
-      // Add AI response to history
+
       chatHistory.push({ role: 'assistant', content: [{ text: data.response }] })
-      // Render the AI response as Markdown
-      appendMessage('ai', data.response, data.sources)
+      appendMessage('ai', data.response, Array.isArray(data.sources) ? data.sources : [])
     } catch (err) {
-      overlay.style.display = 'none'
-      appendMessage('ai', `**Error:** ${err.message}`)
+      chatHistory.pop()
+      appendMessage('ai', `**Error:** ${err.message || 'Something went wrong.'}`)
+    } finally {
+      setBusy(false)
+      userInput.focus()
     }
   }
 
-  function appendMessage(sender, text, sources = []) {
-    const msgDiv = document.createElement('div')
-    msgDiv.className = `message ${sender}-message`
-
-    // 1. Convert Markdown text to HTML
-    const renderer = new marked.Renderer()
-    renderer.image = function (token) {
-      let finalHref = token.href
-      // If the path is relative (starts with /images/), prepend the base URL
-      if (token.href && token.href.startsWith('/images/')) {
-        finalHref = `${IMAGE_BASE_URL}${token.href}`
-      }
-      return `<img src="${finalHref}" alt="${token.text || ''}" title="${token.title || ''}" class="chat-image" />`
-    }
-    marked.use({ renderer })
-    let htmlContent = marked.parse(text)
-
-    // 2. Append Sources if they exist. Backend sends { name, url }; only http(s) urls are linked.
-    if (sources.length > 0) {
-      htmlContent += `<div class="source-header">Sources:</div>`
-      sources.forEach((source) => {
-        const name = typeof source?.name === 'string' ? source.name.trim() : ''
-        const url = typeof source?.url === 'string' ? source.url.trim() : ''
-        if (!name && !url) return
-        const label = name || url
-        if (/^https?:\/\//i.test(url)) {
-          htmlContent += `<a href="${url}" target="_blank" rel="noopener noreferrer" class="source-link">📖 ${label}</a>`
-        } else {
-          htmlContent += `<span class="source-link">📖 ${label}</span>`
-        }
-      })
-    }
-    const ALLOWED_ATTR = ['href', 'src', 'alt', 'title', 'class', 'target', 'rel']
-    msgDiv.innerHTML = DOMPurify.sanitize(htmlContent, { ALLOWED_ATTR })
-
-    // Remove any previous spacer
-    const oldSpacer = messagesDiv.querySelector('.chat-spacer')
-    if (oldSpacer) oldSpacer.remove()
-
-    messagesDiv.appendChild(msgDiv)
-
-    if (sender === 'user') {
-      // Add a spacer so there is always enough overflow to scroll
-      // the user message to the very top of the visible area
-      const spacer = document.createElement('div')
-      spacer.className = 'chat-spacer'
-      spacer.style.height = messagesDiv.clientHeight + 'px'
-      messagesDiv.appendChild(spacer)
-
-      const pageY = window.scrollY
-      msgDiv.scrollIntoView({ block: 'start' })
-      window.scrollTo(0, pageY)
-    }
-  }
-
-  // Event listeners
-  sendBtn.addEventListener('click', () => sendMessage())
-  userInput.addEventListener('keypress', (e) => {
-    if (e.key === 'Enter') sendMessage()
+  form.addEventListener('submit', (event) => {
+    event.preventDefault()
+    sendMessage()
   })
 
-  copyChat.addEventListener('click', () => copyChatWindowToClipboard())
-
-  newChat.addEventListener('click', () => {
-    chatHistory = []
-    messagesDiv.innerHTML = ''
-    userInput.placeholder = 'Ask anything about retrofit...'
-  })
-
-  // Select all the suggestion buttons and add the listener
-  document.querySelectorAll('.action-btn').forEach((button) => {
-    button.addEventListener('click', () => {
-      sendMessage(button.textContent.trim())
-    })
-  })
-
-  function copyChatWindowToClipboard() {
-    const chatContent = messagesDiv.innerText
+  copyChat.addEventListener('click', () => {
+    const chatContent = messagesDiv.innerText.trim()
+    if (!chatContent) {
+      showToast('Nothing to copy yet', 'warning')
+      return
+    }
     navigator.clipboard.writeText(chatContent).then(
       () => showToast('Chat copied to clipboard'),
       (err) => showToast(`Failed to copy chat: ${err}`, 'error', { duration: 5000 })
     )
-  }
+  })
+
+  newChat.addEventListener('click', () => {
+    if (isSending) return
+    chatHistory = []
+    userInput.placeholder = 'Ask anything about retrofit…'
+    renderSuggestions()
+    userInput.focus()
+  })
+
+  renderSuggestions()
 }
 
 /**
- * Cookie Popup Consent Management
+ * Privacy notice: only essential storage is used. Prefer a quiet dialog.
  */
-function initCookieConsent() {
-  const cookiePopup = document.getElementById('cookiePopup')
+function initCookieNotice() {
+  const dialog = document.getElementById('privacyDialog')
   const btnAccept = document.getElementById('acceptCookiesBtn')
 
-  if (!cookiePopup || !btnAccept) return
+  if (!(dialog instanceof HTMLDialogElement) || !btnAccept) return
 
   const consentGiven = localStorage.getItem('retrofit_cookie_consent')
-  if (!consentGiven) {
-    // Show popup after slight delay
-    setTimeout(() => {
-      cookiePopup.classList.add('active')
-    }, 800)
+  if (consentGiven) return
+
+  if (typeof dialog.show === 'function') {
+    dialog.show()
+  } else {
+    dialog.setAttribute('open', '')
   }
 
   btnAccept.addEventListener('click', () => {
     localStorage.setItem('retrofit_cookie_consent', 'true')
-    cookiePopup.classList.remove('active')
-
-    // Delay slightly so the popup close animation completes before showing feedback.
-    setTimeout(() => {
-      showToast('Essential cookie policy accepted.')
-    }, 150)
+    dialog.close()
   })
 }

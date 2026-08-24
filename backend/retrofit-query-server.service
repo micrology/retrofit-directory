@@ -14,6 +14,11 @@ Type=simple
 User=ec2-user
 ExecStart=/usr/bin/node /data/retrofit-directory/backend/query.mjs
 Environment='AWS_REGION=eu-west-2'
+# Required to unlock POST /api/observe. Override on the host, e.g.:
+#   sudo systemctl edit retrofit-query-server
+#   [Service]
+#   Environment=ADMIN_PASSWORD=your-long-secret
+Environment=ADMIN_PASSWORD=
 Restart=always
 RestartSec=10
 StandardOutput=journal

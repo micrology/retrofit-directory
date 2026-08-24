@@ -3,139 +3,88 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta
-      name="description"
-      content="Admin Dashboard - Directory backend configuration, database metrics, and payload management for The Retrofit Directory."
-    />
+    <meta name="description" content="Admin console for The Retrofit Directory usage metrics." />
     <title>Admin | The Retrofit Directory</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@knadh/oat@0.7.1/oat.min.css" />
     <link rel="stylesheet" href="css/style.css" />
   </head>
   <body>
-    <!-- Navigation Header -->
+    <a class="skip-link" href="#main">Skip to content</a>
     <header class="site-header">
       <div class="nav-container">
         <a href="index.html" class="brand-logo">
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            width="26"
-            height="26"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2.2"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-          >
+          <svg xmlns="http://www.w3.org/2000/svg" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
             <polyline points="9 22 9 12 15 12 15 22" />
           </svg>
           The Retrofit Directory
         </a>
-        <button class="mobile-nav-toggle" id="mobileNavToggle" aria-label="Toggle Navigation">
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            width="22"
-            height="22"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-          >
-            <line x1="3" y1="12" x2="21" y2="12" />
+        <button type="button" class="mobile-nav-toggle" id="mobileNavToggle" aria-label="Open menu" aria-controls="navMenu" aria-expanded="false">
+          <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
             <line x1="3" y1="6" x2="21" y2="6" />
+            <line x1="3" y1="12" x2="21" y2="12" />
             <line x1="3" y1="18" x2="21" y2="18" />
           </svg>
         </button>
-        <ul class="nav-menu" id="navMenu">
-          <li><a href="index.html" class="nav-link">Home</a></li>
-          <li><a href="about.html" class="nav-link">About</a></li>
-          <li><a href="resources.html" class="nav-link">Resources</a></li>
-          <li><a href="join.html" class="nav-link">Join</a></li>
-          <li><a href="admin.html" class="nav-link active">Admin</a></li>
-        </ul>
-      </div>
-    </header>
+        <nav class="site-nav" id="siteNav" aria-label="Primary">
+          <ul class="nav-menu" id="navMenu">
+            <li><a href="index.html" class="nav-link">Home</a></li>
+            <li><a href="about.html" class="nav-link">About</a></li>
+            <li><a href="resources.html" class="nav-link">Resources</a></li>
+            <li><a href="join.html" class="nav-link">Join</a></li>
+            <li><a href="admin.html" class="nav-link" aria-current="page">Admin</a></li>
+          </ul>
+        </nav>
+      </div>    </header>
 
-    <!-- Main Content -->
-    <main class="main-content">
-      <!-- Hero Banner -->
-      <section class="hero-section">
-        <div class="hero-image-wrapper">
-          <img
-            src="assets/curacao-cottage-colored-in-a-row-preview.jpg"
-            alt="Admin Portal and Database Metrics"
-            class="hero-image"
-          />
-          <div class="hero-overlay">
-            <h1 class="hero-title">Admin Management Portal</h1>
-            <p class="hero-subtitle">
-              List LM tokens used, cost, and user queries and answers.
-            </p>
-          </div>
-        </div>
-      </section>
-
+    <main id="main" class="main-content">
       <div class="page-header-card">
-        <h2 class="page-title">Directory Console</h2>
-        <p class="page-intro">Here you will find statistics about the Directory and the questions people asked.</p>
+        <h1 class="page-title">Admin console</h1>
+        <p class="page-intro">Usage, cost, and recent questions answered by the Directory Assistant.</p>
       </div>
 
-      <div class="grid-cols-2" style="margin-bottom: 2rem">
-        <!-- Populated by js/admin.mjs from POST /api/observe. Spans both grid
-             columns (see #admin-content in css/style.css) so the tables fit. -->
-        <div class="info-card" id="admin-content">
-          <p class="admin-note">Usage data loads once the console is unlocked.</p>
-        </div>
+      <div class="admin-console" id="admin-content">
+        <p class="admin-note">Usage data loads once the console is unlocked.</p>
       </div>
     </main>
 
-    <!-- Common Footer -->
     <footer class="site-footer">
       <div class="footer-content">
         <div class="footer-logos">
-          <a href="https://www.inhabithub.org.uk/" target="_blank">
-            <img
-              src="assets/INHABIT_logo_colour.webp"
-              alt="INHABIT: Indoor HABItability during the Transition to Net Zero Housing Hub"
-              class="footer-logo"
-            />
+          <a href="https://www.inhabithub.org.uk/" target="_blank" rel="noopener noreferrer">
+            <img src="assets/INHABIT_logo_colour.webp" alt="INHABIT: Indoor HABItability during the Transition to Net Zero Housing Hub" class="footer-logo" width="250" height="80" loading="lazy" />
           </a>
-          <a href="https://www.surrey.ac.uk/" target="_blank">
-            <img
-              src="assets/university_of_surrey.webp"
-              alt="University of Surrey"
-              class="footer-logo"
-            />
+          <a href="https://www.surrey.ac.uk/" target="_blank" rel="noopener noreferrer">
+            <img src="assets/university_of_surrey.webp" alt="University of Surrey" class="footer-logo" width="250" height="80" loading="lazy" />
           </a>
-          <a href="https://nationalretrofithub.org.uk/" target="_blank">
-            <img src="assets/nrh-logo_-sml.webp" alt="National Retrofit Hub" class="footer-logo" />
+          <a href="https://nationalretrofithub.org.uk/" target="_blank" rel="noopener noreferrer">
+            <img src="assets/nrh-logo_-sml.webp" alt="National Retrofit Hub" class="footer-logo" width="250" height="80" loading="lazy" />
           </a>
         </div>
         <p class="footer-text">
           &copy; 2026 The Retrofit Directory is a project of
-          <a class="footer-highlight" href="https://www.inhabithub.org.uk/" target="_blank">
+          <a class="footer-highlight" href="https://www.inhabithub.org.uk/" target="_blank" rel="noopener noreferrer">
             INHABIT: Indoor HABItability during the Transition to Net Zero Housing Hub
-          </a>
-          .
+          </a>.
           <a href="mailto:info@retrofit-directory.org.uk?subject=Inquiry">Contact Us</a>
         </p>
       </div>
     </footer>
 
-    <!-- Hidden by default; js/admin.mjs reveals it only when the password is
-         actually needed, so a remembered unlock shows no flash of the modal. -->
-    <div id="authModalOverlay" class="auth-modal-overlay" hidden>
-      <div class="auth-modal" role="dialog" aria-modal="true" aria-labelledby="authModalTitle">
+    <dialog id="authDialog" class="auth-dialog" aria-labelledby="authModalTitle">
+      <div class="auth-modal">
         <h2 id="authModalTitle">Admin access</h2>
-        <p>Please enter the password to continue.</p>
-        <div class="auth-modal-row">
-          <input id="authPasswordInput" type="password" placeholder="Password" autocomplete="off" />
-          <button id="authSubmitBtn" type="button">Unlock</button>
-        </div>
-        <p id="authErrorMessage" class="auth-error">Incorrect password. Please try again.</p>
+        <p>Enter the server admin password to continue.</p>
+        <form id="authForm" method="post" action="#">
+          <div class="auth-modal-row">
+            <label class="visually-hidden" for="authPasswordInput">Password</label>
+            <input id="authPasswordInput" name="password" type="password" autocomplete="current-password" required />
+            <button id="authSubmitBtn" type="submit">Unlock</button>
+          </div>
+          <p id="authErrorMessage" class="auth-error" hidden>Incorrect password. Please try again.</p>
+        </form>
       </div>
-    </div>
+    </dialog>
 
     <script type="module" src="js/admin.mjs"></script>
     <script type="module" src="js/mobilenav.mjs"></script>

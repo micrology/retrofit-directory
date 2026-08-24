@@ -3,61 +3,40 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta
-      name="description"
-      content="Retrofit Resources - Guides, standards, policy frameworks, and housing decarbonisation tools."
-    />
+    <meta name="description" content="Retrofit Resources - Guides, standards, policy frameworks, and housing decarbonisation tools." />
     <title>Resources | The Retrofit Directory</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@knadh/oat@0.7.1/oat.min.css" />
     <link rel="stylesheet" href="css/style.css" />
   </head>
   <body>
-    <!-- Navigation Header -->
+    <a class="skip-link" href="#main">Skip to content</a>
     <header class="site-header">
       <div class="nav-container">
         <a href="index.html" class="brand-logo">
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            width="26"
-            height="26"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2.2"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-          >
+          <svg xmlns="http://www.w3.org/2000/svg" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
             <polyline points="9 22 9 12 15 12 15 22" />
           </svg>
           The Retrofit Directory
         </a>
-        <button class="mobile-nav-toggle" id="mobileNavToggle" aria-label="Toggle Navigation">
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            width="22"
-            height="22"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-          >
+        <button type="button" class="mobile-nav-toggle" id="mobileNavToggle" aria-label="Open menu" aria-controls="navMenu" aria-expanded="false">
+          <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <line x1="3" y1="6" x2="21" y2="6" />
             <line x1="3" y1="12" x2="21" y2="12" />
             <line x1="3" y1="18" x2="21" y2="18" />
           </svg>
         </button>
-        <ul class="nav-menu" id="navMenu">
-          <li><a href="index.html" class="nav-link">Home</a></li>
-          <li><a href="about.html" class="nav-link">About</a></li>
-          <li><a href="resources.html" class="nav-link active">Resources</a></li>
-          <li><a href="join.html" class="nav-link">Join</a></li>
-          <li><a href="admin.html" class="nav-link">Admin</a></li>
-        </ul>
-      </div>
-    </header>
+        <nav class="site-nav" id="siteNav" aria-label="Primary">
+          <ul class="nav-menu" id="navMenu">
+            <li><a href="index.html" class="nav-link">Home</a></li>
+            <li><a href="about.html" class="nav-link">About</a></li>
+            <li><a href="resources.html" class="nav-link" aria-current="page">Resources</a></li>
+            <li><a href="join.html" class="nav-link">Join</a></li>
+          </ul>
+        </nav>
+      </div>    </header>
 
-    <!-- Main Content -->
-    <main class="main-content">
+    <main id="main" class="main-content">
       <!-- Hero Banner -->
       <section class="hero-section">
         <div class="hero-image-wrapper">
@@ -77,26 +56,16 @@
       </section>
 
       <div class="page-header-card">
-        <h2 class="page-title">Download the complete Directory as a spreadsheet</h2>
+        <h2 class="page-title">Directory data &amp; guides</h2>
         <p class="page-intro">
-          You can download the complete Retrofit Directory as a Microsoft Excel file
-          <a href="../directory.csv" download>here</a>
-          . You can also query the Directory using the
-          <a href="index.html#chatbot-help">Directory Assistant</a>
-          .
-        </p>
-      </div>
-      <div class="page-header-card">
-        <h2 class="page-title">Web sources and technical guides</h2>
-        <p class="page-intro">
-          Explore policy frameworks, PAS 2035 standards, heat pump integration research, and
-          community energy models. You can query these sources using the
-          <a href="index.html#chatbot-help">Directory Assistant</a>
-          .
+          Query organisations and policy documents with the
+          <a href="index.html#chatbot-help">Directory Assistant</a>.
+          A public bulk download is not published here yet (the raw survey export is not suitable for open release).
+          For research access, <a href="mailto:info@retrofit-directory.org.uk?subject=Directory%20data%20request">contact us</a>.
         </p>
       </div>
 
-      <div class="grid-cols-2" style="margin-bottom: 2rem">
+      <div class="grid-cols-2" >
         <div class="info-card">
           <h3>PAS 2035 Standards &amp; Quality</h3>
           <p>
@@ -294,14 +263,14 @@
         </div>
       </div>
 
-      <div class="grid-cols-2" style="margin-bottom: 2rem">
+      <div class="grid-cols-2" >
         <div class="info-card">
           <h3>Heat Pump Integration Research</h3>
           <p>
             Links to research on heat pump integration, including the
-            <a href="https://www.heatpumpcentre.org/en/" target="_blank">Heat Pump Centre</a>
+            <a href="https://www.heatpumpcentre.org/en/" target="_blank" rel="noopener noreferrer">Heat Pump Centre</a>
             and the
-            <a href="https://www.heatpumps.org.uk/" target="_blank">Heat Pump Association</a>
+            <a href="https://www.heatpumps.org.uk/" target="_blank" rel="noopener noreferrer">Heat Pump Association</a>
             .
           </p>
           <ul>
@@ -412,11 +381,11 @@
           <h3>Community Energy &amp; Retrofit Models</h3>
           <p>
             Links to research on community energy and retrofit models, including the
-            <a href="https://www.communityenergyengland.org/" target="_blank">
+            <a href="https://www.communityenergyengland.org/" target="_blank" rel="noopener noreferrer">
               Community Energy England
             </a>
             and the
-            <a href="https://www.communityenergyscotland.org.uk/" target="_blank">
+            <a href="https://www.communityenergyscotland.org.uk/" target="_blank" rel="noopener noreferrer">
               Community Energy Scotland
             </a>
             .
@@ -539,34 +508,24 @@
       </div>
     </main>
 
-    <!-- Common Footer -->
-    <footer class="site-footer">
+        <footer class="site-footer">
       <div class="footer-content">
         <div class="footer-logos">
-          <a href="https://www.inhabithub.org.uk/" target="_blank">
-            <img
-              src="assets/INHABIT_logo_colour.webp"
-              alt="INHABIT: Indoor HABItability during the Transition to Net Zero Housing Hub"
-              class="footer-logo"
-            />
+          <a href="https://www.inhabithub.org.uk/" target="_blank" rel="noopener noreferrer">
+            <img src="assets/INHABIT_logo_colour.webp" alt="INHABIT: Indoor HABItability during the Transition to Net Zero Housing Hub" class="footer-logo" width="250" height="80" loading="lazy" />
           </a>
-          <a href="https://www.surrey.ac.uk/" target="_blank">
-            <img
-              src="assets/university_of_surrey.webp"
-              alt="University of Surrey"
-              class="footer-logo"
-            />
+          <a href="https://www.surrey.ac.uk/" target="_blank" rel="noopener noreferrer">
+            <img src="assets/university_of_surrey.webp" alt="University of Surrey" class="footer-logo" width="250" height="80" loading="lazy" />
           </a>
-          <a href="https://nationalretrofithub.org.uk/" target="_blank">
-            <img src="assets/nrh-logo_-sml.webp" alt="National Retrofit Hub" class="footer-logo" />
+          <a href="https://nationalretrofithub.org.uk/" target="_blank" rel="noopener noreferrer">
+            <img src="assets/nrh-logo_-sml.webp" alt="National Retrofit Hub" class="footer-logo" width="250" height="80" loading="lazy" />
           </a>
         </div>
         <p class="footer-text">
           &copy; 2026 The Retrofit Directory is a project of
-          <a class="footer-highlight" href="https://www.inhabithub.org.uk/" target="_blank">
+          <a class="footer-highlight" href="https://www.inhabithub.org.uk/" target="_blank" rel="noopener noreferrer">
             INHABIT: Indoor HABItability during the Transition to Net Zero Housing Hub
-          </a>
-          .
+          </a>.
           <a href="mailto:info@retrofit-directory.org.uk?subject=Inquiry">Contact Us</a>
         </p>
       </div>

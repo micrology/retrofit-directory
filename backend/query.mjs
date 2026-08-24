@@ -1,6 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { timingSafeEqual as cryptoTimingSafeEqual } from 'node:crypto'
 import sqlite3 from 'sqlite3'
 import { BedrockRuntimeClient, ConverseCommand } from '@aws-sdk/client-bedrock-runtime'
 import {
@@ -87,6 +88,8 @@ const bedrockAgent = new BedrockAgentRuntimeClient({ region: BEDROCK_REGION })
 
 const app = express()
 const PORT = process.env.PORT || 5001
+/** Required for POST /api/observe. Set via environment (systemd Environment= or shell). */
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || ''
 
 app.set('trust proxy', 1) // trust first proxy, if behind a proxy
 app.use(
@@ -979,7 +982,51 @@ app.post('/api/query', async (req, res) =>
   })
 )
 
+/**
+ * Constant-time string compare for bearer tokens. Length mismatch still walks
+ * the expected secret so timing does not leak its length in an obvious way.
+ * @param {string} provided
+ * @param {string} expected
+ * @returns {boolean}
+ */
+function timingSafeEqualString(provided, expected) {
+  const a = Buffer.from(String(provided), 'utf8')
+  const b = Buffer.from(String(expected), 'utf8')
+  if (a.length !== b.length) {
+    // Compare against itself so the work is not skipped on length mismatch.
+    cryptoTimingSafeEqual(b, b)
+    return false
+  }
+  return cryptoTimingSafeEqual(a, b)
+}
+
+/**
+ * Gate /api/observe behind ADMIN_PASSWORD (Authorization: Bearer …).
+ * @param {import('express').Request} req
+ * @param {import('express').Response} res
+ * @returns {boolean} true when the request may proceed
+ */
+function requireAdmin(req, res) {
+  if (!ADMIN_PASSWORD) {
+    res.status(503).json({
+      error: 'Admin access is not configured. Set ADMIN_PASSWORD on the server.',
+    })
+    return false
+  }
+
+  const header = req.get('authorization') || ''
+  const match = /^Bearer\s+(.+)$/i.exec(header)
+  const token = match?.[1]?.trim() || ''
+  if (!token || !timingSafeEqualString(token, ADMIN_PASSWORD)) {
+    res.status(401).json({ error: 'Unauthorized' })
+    return false
+  }
+  return true
+}
+
 app.post('/api/observe', async (req, res) => {
+  if (!requireAdmin(req, res)) return
+
   try {
     // `includeRecent` will drive the scrollable query/response list on
     // admin.html; token totals are always present.

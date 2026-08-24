@@ -12,7 +12,7 @@
     <link rel="stylesheet" href="css/style.css" />
   </head>
   <body>
-    <!-- Navigation Header -->
+    <a class="skip-link" href="#main">Skip to content</a>
     <header class="site-header">
       <div class="nav-container">
         <a href="index.html" class="brand-logo">
@@ -26,13 +26,21 @@
             stroke-width="2.2"
             stroke-linecap="round"
             stroke-linejoin="round"
+            aria-hidden="true"
           >
             <path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
             <polyline points="9 22 9 12 15 12 15 22" />
           </svg>
           The Retrofit Directory
         </a>
-        <button class="mobile-nav-toggle" id="mobileNavToggle" aria-label="Toggle Navigation">
+        <button
+          type="button"
+          class="mobile-nav-toggle"
+          id="mobileNavToggle"
+          aria-label="Open menu"
+          aria-controls="navMenu"
+          aria-expanded="false"
+        >
           <svg
             xmlns="http://www.w3.org/2000/svg"
             width="22"
@@ -41,23 +49,25 @@
             fill="none"
             stroke="currentColor"
             stroke-width="2"
+            aria-hidden="true"
           >
+            <line x1="3" y1="6" x2="21" y2="6" />
             <line x1="3" y1="12" x2="21" y2="12" />
             <line x1="3" y1="18" x2="21" y2="18" />
           </svg>
         </button>
-        <ul class="nav-menu" id="navMenu">
-          <li><a href="index.html" class="nav-link">Home</a></li>
-          <li><a href="about.html" class="nav-link active">About</a></li>
-          <li><a href="resources.html" class="nav-link">Resources</a></li>
-          <li><a href="join.html" class="nav-link">Join</a></li>
-          <li><a href="admin.html" class="nav-link">Admin</a></li>
-        </ul>
+        <nav class="site-nav" id="siteNav" aria-label="Primary">
+          <ul class="nav-menu" id="navMenu">
+            <li><a href="index.html" class="nav-link">Home</a></li>
+            <li><a href="about.html" class="nav-link" aria-current="page">About</a></li>
+            <li><a href="resources.html" class="nav-link">Resources</a></li>
+            <li><a href="join.html" class="nav-link">Join</a></li>
+          </ul>
+        </nav>
       </div>
     </header>
 
-    <!-- Main Content -->
-    <main class="main-content">
+    <main id="main" class="main-content">
       <!-- Hero Banner -->
       <section class="hero-section">
         <div class="hero-image-wrapper">
@@ -116,7 +126,7 @@
         </p>
       </div>
 
-      <div class="grid-cols-2" style="margin-bottom: 2rem">
+      <div class="grid-cols-2">
         <div class="info-card">
           <h3>The INHABIT Hub</h3>
           <p>
@@ -161,31 +171,48 @@
       </div>
     </main>
 
-    <!-- Common Footer -->
     <footer class="site-footer">
       <div class="footer-content">
         <div class="footer-logos">
-          <a href="https://www.inhabithub.org.uk/" target="_blank">
+          <a href="https://www.inhabithub.org.uk/" target="_blank" rel="noopener noreferrer">
             <img
               src="assets/INHABIT_logo_colour.webp"
               alt="INHABIT: Indoor HABItability during the Transition to Net Zero Housing Hub"
               class="footer-logo"
+              width="250"
+              height="80"
+              loading="lazy"
             />
           </a>
-          <a href="https://www.surrey.ac.uk/" target="_blank">
+          <a href="https://www.surrey.ac.uk/" target="_blank" rel="noopener noreferrer">
             <img
               src="assets/university_of_surrey.webp"
               alt="University of Surrey"
               class="footer-logo"
+              width="250"
+              height="80"
+              loading="lazy"
             />
           </a>
-          <a href="https://nationalretrofithub.org.uk/" target="_blank">
-            <img src="assets/nrh-logo_-sml.webp" alt="National Retrofit Hub" class="footer-logo" />
+          <a href="https://nationalretrofithub.org.uk/" target="_blank" rel="noopener noreferrer">
+            <img
+              src="assets/nrh-logo_-sml.webp"
+              alt="National Retrofit Hub"
+              class="footer-logo"
+              width="250"
+              height="80"
+              loading="lazy"
+            />
           </a>
         </div>
         <p class="footer-text">
           &copy; 2026 The Retrofit Directory is a project of
-          <a class="footer-highlight" href="https://www.inhabithub.org.uk/" target="_blank">
+          <a
+            class="footer-highlight"
+            href="https://www.inhabithub.org.uk/"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
             INHABIT: Indoor HABItability during the Transition to Net Zero Housing Hub
           </a>
           .

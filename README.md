@@ -164,6 +164,23 @@ message in `response` rather than failing with a 500.
 
 ## Security hardening
 
+### Admin usage endpoint
+
+`POST /api/observe` requires `Authorization: Bearer <token>` matching the
+server environment variable `ADMIN_PASSWORD`. If the variable is unset the
+endpoint returns `503`. Configure it via systemd:
+
+```bash
+sudo systemctl edit retrofit-query-server
+# [Service]
+# Environment=ADMIN_PASSWORD=your-long-secret
+sudo systemctl restart retrofit-query-server
+```
+
+The admin page stores the token in `sessionStorage` for up to 12 hours after a
+successful unlock. It is not a substitute for network access controls on the
+admin path.
+
 The following controls are currently implemented.
 
 ### Input validation
