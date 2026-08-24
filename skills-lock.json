@@ -1,0 +1,71 @@
+{
+  "version": 1,
+  "skills": {
+    "ai-output-judgement": {
+      "source": "kemiljk/skills",
+      "sourceType": "github",
+      "skillPath": "skills/ai-output-judgement/SKILL.md",
+      "computedHash": "fbd4b69418428b90fd0836ba2a24027d8cfe37a9d157b83aa7b10ac582f2b51e"
+    },
+    "design-engineering": {
+      "source": "kemiljk/skills",
+      "sourceType": "github",
+      "skillPath": "skills/design-engineering/SKILL.md",
+      "computedHash": "814dea65eddd152f8810a5c553d49345f28f38115a9dc0745e7d3ec0a2fc0115"
+    },
+    "dxe": {
+      "source": "kemiljk/skills",
+      "sourceType": "github",
+      "skillPath": "skills/dxe/SKILL.md",
+      "computedHash": "2a5b25807e4b8e1f96b8ed008f753e96a44329a55a7150183388f7707f86ce8b"
+    },
+    "fluid-design": {
+      "source": "kemiljk/skills",
+      "sourceType": "github",
+      "skillPath": "skills/fluid-design/SKILL.md",
+      "computedHash": "5f148ed378424c47d0a25966de5708b91066ba50aef6475dbc1474f27538c2bb"
+    },
+    "interface-affordances": {
+      "source": "kemiljk/skills",
+      "sourceType": "github",
+      "skillPath": "skills/interface-affordances/SKILL.md",
+      "computedHash": "6d74349071bd572b71a16ea957ef19d5937631e02aff542782d44c392665b378"
+    },
+    "modern-css-html": {
+      "source": "kemiljk/skills",
+      "sourceType": "github",
+      "skillPath": "skills/modern-css-html/SKILL.md",
+      "computedHash": "97a1846af1ab64a8d12941b0b06fbac36bcc3c2b8adb1ffe0f0297e3c5cde06b"
+    },
+    "product-delight": {
+      "source": "kemiljk/skills",
+      "sourceType": "github",
+      "skillPath": "skills/product-delight/SKILL.md",
+      "computedHash": "ae4346bed53c4cdf742bff51c4997aa46fe449c98b67c9b76b1ea6ae7fb0cea6"
+    },
+    "prototype-to-production": {
+      "source": "kemiljk/skills",
+      "sourceType": "github",
+      "skillPath": "skills/prototype-to-production/SKILL.md",
+      "computedHash": "9b281f223fa71712688d160be420c870d8ff4ffeffb91dc7dfa0bc7ab4d3e357"
+    },
+    "semantic-html-first": {
+      "source": "kemiljk/skills",
+      "sourceType": "github",
+      "skillPath": "skills/semantic-html-first/SKILL.md",
+      "computedHash": "41bf3d3cecd51d742b53a56336356e3c090e0ffe3dd1417b76ff1504d0d511c7"
+    },
+    "subtractive-design": {
+      "source": "kemiljk/skills",
+      "sourceType": "github",
+      "skillPath": "skills/subtractive-design/SKILL.md",
+      "computedHash": "9d321d1fe4b967eeda75261975054870c1745deaa126d55180d3a9860e622256"
+    },
+    "write-first-design": {
+      "source": "kemiljk/skills",
+      "sourceType": "github",
+      "skillPath": "skills/write-first-design/SKILL.md",
+      "computedHash": "c83e9b18605f87628acde304d5defb6c925b747b6eb9a1b9e7de521432a89472"
+    }
+  }
+}
