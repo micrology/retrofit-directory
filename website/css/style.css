@@ -207,7 +207,7 @@ main.main-content {
   max-width: var(--content-max);
   width: 100%;
   margin-inline: auto;
-  padding: 1.5rem 1.25rem 3rem;
+  padding: 1.5rem 1.25rem 0;
 }
 
 /* Hero */
@@ -744,7 +744,7 @@ a.action-btn-large:hover {
 .site-footer {
   background-color: var(--surface-color);
   border-top: 1px solid var(--border-color);
-  padding: 2rem 1.25rem;
+  padding: 0.5rem 1.25rem;
   margin-top: auto;
 }
 
@@ -755,7 +755,6 @@ a.action-btn-large:hover {
   flex-wrap: wrap;
   justify-content: space-between;
   align-items: center;
-  gap: 1rem;
 }
 
 .footer-highlight {
