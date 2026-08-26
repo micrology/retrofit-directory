@@ -35,6 +35,18 @@ AddType application/javascript .mjs
 # Disable directory listing
 Options -Indexes
 
+# Caching: HTML revalidates on each request; static assets cache for 1 day.
+# Assets are not content-hashed, so avoid long immutable caches.
+<IfModule mod_headers.c>
+  <FilesMatch "\.(html|htm)$">
+    Header set Cache-Control "public, max-age=0, must-revalidate"
+  </FilesMatch>
+
+  <FilesMatch "\.(css|js|mjs|png|jpe?g|gif|webp|svg|ico|woff2?|ttf|eot|otf)$">
+    Header set Cache-Control "public, max-age=86400"
+  </FilesMatch>
+</IfModule>
+
 # Block access to dotfiles (e.g. .git, .env); .htaccess itself is already protected by Apache
 <IfModule mod_authz_core.c>
   <FilesMatch "^\.(?!well-known)">
