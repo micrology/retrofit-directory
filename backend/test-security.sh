@@ -112,65 +112,23 @@ echo ""
 
 # ── 4. validateSql unit tests ────────────────────────────────────────────────
 # Mirrors backend/query.mjs validateSql (keep in sync when changing guardrails).
-echo "--- validateSql unit tests (inline Node.js) ---"
-node_result=$(node --input-type=module << 'EOF'
-function stripSqlComments(sql) {
-  return String(sql || '')
-    .replace(/\/\*[\s\S]*?\*\//g, ' ')
-    .replace(/--[^\n]*/g, ' ')
-}
-const FORBIDDEN_SQL_KEYWORD =
-  /\b(?:ATTACH|DETACH|DROP|INSERT|UPDATE|DELETE|ALTER|CREATE|REINDEX|VACUUM|PRAGMA|ANALYZE|GRANT|REVOKE|TRUNCATE|MERGE|CALL|EXEC(?:UTE)?|LOAD_EXTENSION|INTO)\b/i
-const FORBIDDEN_SQL_REPLACE_STMT = /\bREPLACE\s+(?:OR\s+\w+\s+)?(?:INTO\b|\w+)/i
-function validateSql(sql) {
-  const original = String(sql || '')
-  const withoutComments = stripSqlComments(original).trim()
-  if (!withoutComments) throw new Error('Rejected')
-  const single = withoutComments.replace(/;\s*$/, '').trim()
-  if (!single || single.includes(';')) throw new Error('Rejected')
-  if (!/^(?:WITH|SELECT)\b/i.test(single)) throw new Error('Rejected')
-  if (FORBIDDEN_SQL_KEYWORD.test(single) || FORBIDDEN_SQL_REPLACE_STMT.test(single)) {
-    throw new Error('Rejected')
-  }
-}
-const tests = [
-  ["SELECT * FROM organisations", true, "plain SELECT"],
-  ["  select count(*) from organisations", true, "lowercase select"],
-  ["-- comment\nSELECT 1", true, "line comment before SELECT"],
-  ["/* comment */ SELECT id FROM orgs", true, "block comment before SELECT"],
-  ["WITH x AS (SELECT 1 AS n) SELECT * FROM x", true, "WITH CTE SELECT"],
-  ["SELECT REPLACE(org_name, 'a', 'b') FROM orgs_llm", true, "REPLACE() expression"],
-  ["SELECT 1;", true, "trailing semicolon only"],
-  ["DROP TABLE organisations", false, "DROP TABLE"],
-  ["INSERT INTO organisations VALUES (1)", false, "INSERT"],
-  ["UPDATE organisations SET name='x'", false, "UPDATE"],
-  ["DELETE FROM organisations", false, "DELETE"],
-  ["/* comment */ DROP TABLE organisations", false, "block comment then DROP"],
-  ["-- comment\nDROP TABLE organisations\n", false, "line comment then DROP"],
-  ["SELECT 1; DROP TABLE organisations", false, "SELECT with appended DROP"],
-  ["SELECT 1; SELECT 2", false, "multi SELECT"],
-  ["PRAGMA table_info(orgs)", false, "PRAGMA"],
-  ["ATTACH DATABASE ':memory:' AS evil", false, "ATTACH"],
-  ["SELECT * FROM orgs INTO outfile", false, "SELECT INTO"],
-  ["CREATE TABLE t(a)", false, "CREATE"],
-  ["SELECTFOO FROM bar", false, "word boundary check (SELECTFOO)"],
-];
-tests.forEach(([sql, expectPass, label]) => {
-  let accepted
-  try { validateSql(sql); accepted = true } catch { accepted = false }
-  const ok = accepted === expectPass
-  process.stdout.write((ok ? 'PASS' : 'FAIL') + ' ' + label + '\n')
-})
-EOF
-)
+echo "--- validateSql unit tests ---"
+node_result=$(node --input-type=module "$(dirname "$0")/test-validate-sql.mjs")
+node_status=$?
 while IFS= read -r line; do
+  [ -z "$line" ] && continue
   case "$line" in
     PASS*) echo -e "${green}✓${nc} validateSql: ${line#PASS }"; PASS=$((PASS + 1)) ;;
     FAIL*) echo -e "${red}✗${nc} validateSql: ${line#FAIL }"; FAIL=$((FAIL + 1)) ;;
+    *) echo "$line" ;;
   esac
 done << EOF2
 $node_result
 EOF2
+if [ "$node_status" -ne 0 ]; then
+  echo -e "${red}✗${nc} validateSql unit test process exited non-zero"
+  FAIL=$((FAIL + 1))
+fi
 echo ""
 
 # ── 5. Prompt injection ──────────────────────────────────────────────────────

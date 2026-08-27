@@ -489,8 +489,7 @@ Introduction:`
 
 /**
  * Remove SQL line/block comments so keyword checks cannot be defeated by
- * comment camouflage. String literals are left intact (directory queries do not
- * need embedded DDL keywords inside strings for legitimate filters).
+ * comment camouflage.
  * @param {string} sql
  * @returns {string}
  */
@@ -501,8 +500,46 @@ function stripSqlComments(sql) {
 }
 
 /**
+ * Replace string literals with empty quoted placeholders so keyword / semicolon
+ * checks ignore values such as LIKE '%into%' or 'a;b'.
+ * Handles SQL single quotes (including '') and double-quoted identifiers/strings.
+ * @param {string} sql
+ * @returns {string}
+ */
+function maskSqlStringLiterals(sql) {
+  return String(sql || '')
+    .replace(/'(?:''|[^'])*'/g, "''")
+    .replace(/"(?:""|[^"])*"/g, '""')
+}
+
+/**
+ * Normalise raw LLM SQL output before validation/execution.
+ * Strips markdown fences and any prose before the first SELECT/WITH.
+ * @param {string} text
+ * @returns {string}
+ */
+export function extractSqlFromLlmOutput(text) {
+  let sql = String(text || '').trim()
+  if (!sql) return ''
+
+  const fence = sql.match(/```(?:sql)?\s*([\s\S]*?)```/i)
+  if (fence) {
+    sql = fence[1].trim()
+  }
+
+  // Drop a leading prose line if the model ignored "SQL only".
+  const start = sql.search(/\b(?:WITH|SELECT)\b/i)
+  if (start > 0) {
+    sql = sql.slice(start).trim()
+  }
+
+  return sql
+}
+
+/**
  * Guardrail: allow a single SELECT / WITH…SELECT statement only.
  * Rejects multi-statement SQL, writes, and SQLite admin features.
+ * String literals are masked so harmless values cannot trip keyword checks.
  * @param {string} sql
  * @returns {void}
  */
@@ -513,9 +550,11 @@ export function validateSql(sql) {
     throw new UnsafeSqlError(original.slice(0, 120))
   }
 
-  // Allow one optional trailing semicolon; reject any other statement separator.
+  // Allow one optional trailing semicolon; reject any other statement separator
+  // outside of string literals.
   const single = withoutComments.replace(/;\s*$/, '').trim()
-  if (!single || single.includes(';')) {
+  const masked = maskSqlStringLiterals(single)
+  if (!single || masked.includes(';')) {
     throw new UnsafeSqlError(original.slice(0, 120))
   }
 
@@ -523,7 +562,7 @@ export function validateSql(sql) {
     throw new UnsafeSqlError(original.slice(0, 120))
   }
 
-  if (FORBIDDEN_SQL_KEYWORD.test(single) || FORBIDDEN_SQL_REPLACE_STMT.test(single)) {
+  if (FORBIDDEN_SQL_KEYWORD.test(masked) || FORBIDDEN_SQL_REPLACE_STMT.test(masked)) {
     throw new UnsafeSqlError(original.slice(0, 120))
   }
 }
@@ -1001,16 +1040,21 @@ app.post('/api/query', async (req, res) =>
 
       // Directory path: text-to-SQL over the organisation survey database.
       const generatedSqlQuery = await generateSqlFromQuery(safeQuery)
-      let sqlQuery = alignCanonicalColumnsToLlmView(generatedSqlQuery)
+      let sqlQuery = extractSqlFromLlmOutput(generatedSqlQuery)
+      sqlQuery = alignCanonicalColumnsToLlmView(sqlQuery)
       sqlQuery = enforceDistinctForOrgNameLists(sqlQuery)
       logEntry.sqlQuery = sqlQuery
 
-      // Reject anything that isn't a SELECT before it touches the database.
+      // Reject anything that isn't a safe SELECT before it touches the database.
       try {
         validateSql(sqlQuery)
       } catch (error) {
         if (error instanceof UnsafeSqlError) {
-          logAPICalls('Out-of-scope or non-SQL query response:', { safeQuery, generatedSqlQuery })
+          logAPICalls('Rejected unsafe or non-SQL model output:', {
+            safeQuery,
+            generatedSqlQuery,
+            sqlQuery,
+          })
           logEntry.outcome = 'out_of_scope'
           logEntry.response = OUT_OF_SCOPE_RESPONSE
           return respondAndLog({ response: OUT_OF_SCOPE_RESPONSE, sources: [] })
@@ -1024,15 +1068,20 @@ app.post('/api/query', async (req, res) =>
         rawResults = await queryDatabase(sqlQuery)
       } catch (dbError) {
         const sqliteErrorText = dbError?.message || String(dbError)
-        const repairedSql = await regenerateSqlFromError(safeQuery, sqlQuery, sqliteErrorText)
-        sqlQuery = alignCanonicalColumnsToLlmView(repairedSql)
+        const repairedSqlRaw = await regenerateSqlFromError(safeQuery, sqlQuery, sqliteErrorText)
+        sqlQuery = extractSqlFromLlmOutput(repairedSqlRaw)
+        sqlQuery = alignCanonicalColumnsToLlmView(sqlQuery)
         sqlQuery = enforceDistinctForOrgNameLists(sqlQuery)
         logEntry.sqlQuery = sqlQuery
         try {
           validateSql(sqlQuery)
         } catch (error) {
           if (error instanceof UnsafeSqlError) {
-            logAPICalls('Out-of-scope after SQL repair attempt:', { safeQuery, repairedSql })
+            logAPICalls('Rejected unsafe SQL after repair attempt:', {
+              safeQuery,
+              repairedSqlRaw,
+              sqlQuery,
+            })
             logEntry.outcome = 'out_of_scope'
             logEntry.response = OUT_OF_SCOPE_RESPONSE
             return respondAndLog({ response: OUT_OF_SCOPE_RESPONSE, sources: [] })
