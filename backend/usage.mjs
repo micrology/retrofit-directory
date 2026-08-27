@@ -250,6 +250,32 @@ export async function saveRequestLog(entry) {
 }
 
 /**
+ * Total input+output tokens logged for the current UTC calendar day.
+ * Used as a global Bedrock spend circuit-breaker. Returns 0 if the store is down
+ * so availability issues do not block the API (cost risk only while usage.db is broken).
+ * @returns {Promise<number>}
+ */
+export async function getTodayTokenTotal() {
+  try {
+    const database = await initUsageStore()
+    if (!database) return 0
+
+    const day = new Date().toISOString().slice(0, 10)
+    const [row] = await all(
+      database,
+      `SELECT COALESCE(SUM(input_tokens), 0) + COALESCE(SUM(output_tokens), 0) AS total_tokens
+         FROM request_log
+        WHERE substr(ts, 1, 10) = ?`,
+      [day]
+    )
+    return Number(row?.total_tokens) || 0
+  } catch (error) {
+    console.error("Failed to read today's token total:", error?.message || error)
+    return 0
+  }
+}
+
+/**
  * Convert token counts into an approximate USD cost for a given model.
  * @param {string} modelId
  * @param {number} inputTokens

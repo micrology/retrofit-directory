@@ -55,3 +55,11 @@ dist/
 backend/usage.db
 backend/usage.db-wal
 backend/usage.db-shm
+
+# Directory data (survey exports / derived DB — deploy on host, do not commit)
+backend/directory.db
+backend/directory.db-*
+directory.csv
+*.csv
+*.xlsx
+*.xls

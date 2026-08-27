@@ -18,6 +18,7 @@ import {
   recordModelCall,
   saveRequestLog,
   getUsageSummary,
+  getTodayTokenTotal,
 } from './usage.mjs'
 /**
  * HTTP API for natural-language querying over the retrofit SQLite directory
@@ -26,7 +27,8 @@ import {
  * policy passages, and produce natural-language answers.
  */
 
-const VERBOSE = true // set to false to suppress console logging of queries and results
+/** Verbose request logging. Off by default; set VERBOSE=1 (or true) to enable. */
+const VERBOSE = /^(1|true|yes)$/i.test(String(process.env.VERBOSE || ''))
 const DB_PATH = path.join(path.dirname(fileURLToPath(import.meta.url)), 'directory.db')
 const SCHEMA_PATH = path.join(path.dirname(fileURLToPath(import.meta.url)), 'directory.schema')
 const BEDROCK_REGION = 'eu-west-2'
@@ -48,7 +50,24 @@ const MAX_HISTORY_TURNS = 6
 const MAX_QUERY_LENGTH = 500
 const MAX_QUERY_LENGTH_WITH_CONTEXT = 1000
 const LONG_LIST_THRESHOLD = 25
+/** Hard cap on rows returned from directory SQL (defence against huge dumps). */
+const MAX_SQL_RESULT_ROWS = 500
+/**
+ * Global Bedrock budget: sum of input+output tokens logged today (UTC).
+ * Override with DAILY_TOKEN_BUDGET. Requests are rejected with 429 once exceeded.
+ */
+const DAILY_TOKEN_BUDGET = Math.max(
+  0,
+  Number(process.env.DAILY_TOKEN_BUDGET) || 200_000
+)
 const VALID_INTENTS = new Set(['directory', 'policy', 'out_of_scope'])
+/**
+ * Keywords that must never appear in LLM SQL (word-boundary match after comment strip).
+ * REPLACE is matched only as a statement form so REPLACE() expressions remain valid.
+ */
+const FORBIDDEN_SQL_KEYWORD =
+  /\b(?:ATTACH|DETACH|DROP|INSERT|UPDATE|DELETE|ALTER|CREATE|REINDEX|VACUUM|PRAGMA|ANALYZE|GRANT|REVOKE|TRUNCATE|MERGE|CALL|EXEC(?:UTE)?|LOAD_EXTENSION|INTO)\b/i
+const FORBIDDEN_SQL_REPLACE_STMT = /\bREPLACE\s+(?:OR\s+\w+\s+)?(?:INTO\b|\w+)/i
 const CANONICAL_LLM_COLUMNS = [
   'org_name',
   'org_main_type',
@@ -78,6 +97,17 @@ class UnsafeSqlError extends Error {
   constructor(sqlSnippet) {
     super(`Unsafe or unexpected SQL generated: ${sqlSnippet}`)
     this.name = 'UnsafeSqlError'
+  }
+}
+
+class DailyTokenBudgetError extends Error {
+  constructor(used, budget) {
+    super(
+      `Daily Bedrock token budget exceeded (${used.toLocaleString('en-GB')} / ${budget.toLocaleString('en-GB')} tokens UTC day).`
+    )
+    this.name = 'DailyTokenBudgetError'
+    this.used = used
+    this.budget = budget
   }
 }
 
@@ -112,6 +142,15 @@ const queryLimiter = rateLimit({
   message: { error: 'Too many requests, please try again later.' },
 })
 app.use('/api/query', queryLimiter)
+
+const observeLimiter = rateLimit({
+  windowMs: 60_000,
+  max: 30, // admin dashboard refresh + unlock attempts
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many requests, please try again later.' },
+})
+app.use('/api/observe', observeLimiter)
 
 let server // server instance
 let httpTerminator // terminator instance
@@ -327,7 +366,8 @@ export async function queryDatabase(sqlQuery) {
 
   try {
     const rows = await all(db, sqlQuery)
-    return rows.map((row) => Object.values(row))
+    const limited = rows.length > MAX_SQL_RESULT_ROWS ? rows.slice(0, MAX_SQL_RESULT_ROWS) : rows
+    return limited.map((row) => Object.values(row))
   } finally {
     await close(db)
   }
@@ -447,17 +487,56 @@ Introduction:`
   return `${safeIntro}\n\n${lines.join('\n')}`
 }
 
-// Validate that an LLM-generated SQL string is a safe SELECT-only statement.
 /**
- * Guardrail: allow only SELECT statements before sending SQL to SQLite.
+ * Remove SQL line/block comments so keyword checks cannot be defeated by
+ * comment camouflage. String literals are left intact (directory queries do not
+ * need embedded DDL keywords inside strings for legitimate filters).
+ * @param {string} sql
+ * @returns {string}
+ */
+function stripSqlComments(sql) {
+  return String(sql || '')
+    .replace(/\/\*[\s\S]*?\*\//g, ' ')
+    .replace(/--[^\n]*/g, ' ')
+}
+
+/**
+ * Guardrail: allow a single SELECT / WITH…SELECT statement only.
+ * Rejects multi-statement SQL, writes, and SQLite admin features.
  * @param {string} sql
  * @returns {void}
  */
-function validateSql(sql) {
-  // Strip leading whitespace and block comments before checking the statement type.
-  const stripped = sql.replace(/^(\s|\/\*.*?\*\/|--[^\n]*\n)*/s, '').trimStart()
-  if (!/^SELECT\b/i.test(stripped)) {
-    throw new UnsafeSqlError(sql.slice(0, 120))
+export function validateSql(sql) {
+  const original = String(sql || '')
+  const withoutComments = stripSqlComments(original).trim()
+  if (!withoutComments) {
+    throw new UnsafeSqlError(original.slice(0, 120))
+  }
+
+  // Allow one optional trailing semicolon; reject any other statement separator.
+  const single = withoutComments.replace(/;\s*$/, '').trim()
+  if (!single || single.includes(';')) {
+    throw new UnsafeSqlError(original.slice(0, 120))
+  }
+
+  if (!/^(?:WITH|SELECT)\b/i.test(single)) {
+    throw new UnsafeSqlError(original.slice(0, 120))
+  }
+
+  if (FORBIDDEN_SQL_KEYWORD.test(single) || FORBIDDEN_SQL_REPLACE_STMT.test(single)) {
+    throw new UnsafeSqlError(original.slice(0, 120))
+  }
+}
+
+/**
+ * Reject further Bedrock spend once today's logged tokens hit the daily budget.
+ * @returns {Promise<void>}
+ */
+async function assertDailyTokenBudget() {
+  if (DAILY_TOKEN_BUDGET <= 0) return
+  const used = await getTodayTokenTotal()
+  if (used >= DAILY_TOKEN_BUDGET) {
+    throw new DailyTokenBudgetError(used, DAILY_TOKEN_BUDGET)
   }
 }
 
@@ -868,6 +947,24 @@ app.post('/api/query', async (req, res) =>
           .json({ error: `Query too long (max ${MAX_QUERY_LENGTH} characters)` })
       }
       logEntry.rawQuery = userQuery
+
+      // Global spend circuit-breaker before any Bedrock call.
+      try {
+        await assertDailyTokenBudget()
+      } catch (error) {
+        if (error instanceof DailyTokenBudgetError) {
+          logAPICalls('Daily token budget exceeded:', error.message)
+          logEntry.outcome = 'error'
+          logEntry.response = error.message
+          res.status(429).json({
+            error:
+              'The directory assistant has reached its daily usage limit. Please try again tomorrow.',
+          })
+          await saveRequestLog(logEntry)
+          return
+        }
+        throw error
+      }
 
       // If there is previous context, reformulate the user's query to include it.
       if (messages.length > 1) {

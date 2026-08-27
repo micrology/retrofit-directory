@@ -202,16 +202,17 @@ quoted `User Question:` field and append adversarial instructions).
 
 The SQL string returned by the LLM is validated before it is executed:
 
-- Leading whitespace and SQL comments (`-- …` and `/* … */`) are stripped
-- The remaining text must begin with the keyword `SELECT` (word-boundary
-  match, case-insensitive)
-- Any other statement (`DROP`, `INSERT`, `UPDATE`, `DELETE`, etc.) causes the
-  request to return a friendly out-of-scope response and the SQL is logged
+- Line and block comments (`-- …`, `/* … */`) are stripped before checks
+- Exactly one statement is allowed (at most one trailing `;`; no stacked SQL)
+- The statement must begin with `SELECT` or `WITH` (word-boundary, case-insensitive)
+- Forbidden keywords anywhere in the statement include `DROP`, `INSERT`,
+  `UPDATE`, `DELETE`, `ALTER`, `CREATE`, `ATTACH`, `PRAGMA`, `INTO`, and similar
+- Result sets are capped at 500 rows server-side
+- Rejected SQL causes a friendly out-of-scope response; the SQL is logged
   server-side for review
 
-This is a defence-in-depth measure: even if an attacker bypasses the prompt
-sanitisation and manipulates the LLM into generating a destructive statement,
-it will never reach the database.
+This is a defence-in-depth measure on top of opening the directory database
+`OPEN_READONLY`.
 
 ### SQL reliability guardrails
 
@@ -247,10 +248,25 @@ validation were somehow bypassed, no write operation could succeed.
 
 ### Rate limiting
 
-`express-rate-limit` applies a limit of **20 requests per IP per minute** to
-`/api/query`.  Requests that exceed the limit receive a `429 Too Many Requests`
-response.  This limits the cost exposure from Bedrock invocations and mitigates
-denial-of-service via query flooding.
+`express-rate-limit` applies:
+
+- **20 requests per IP per minute** to `/api/query`
+- **30 requests per IP per minute** to `/api/observe`
+
+Requests that exceed the limit receive a `429 Too Many Requests` response.
+
+### Daily Bedrock token budget
+
+Before any model call, `/api/query` checks the sum of input+output tokens
+logged for the current **UTC** day in `usage.db`. The default budget is
+**200,000 tokens**. Override with `DAILY_TOKEN_BUDGET` (set `0` to disable).
+When the budget is exhausted the endpoint returns `429` with a clear message
+and does not call Bedrock.
+
+### Request logging
+
+Verbose per-request console logging is **off by default**. Set `VERBOSE=1`
+(or `true` / `yes`) on the process to enable detailed query/SQL logs.
 
 ### Loopback-only binding
 
@@ -307,6 +323,8 @@ A regression test script covers all of the controls above:
 ```
 
 The script exits with a non-zero code if any test fails, making it suitable
-for use in a CI pipeline.  Note: the rate-limiting section sleeps 61 seconds
-to guarantee a clean rate-limit window; total runtime is approximately
-90 seconds including two Bedrock calls.
+for use in a CI pipeline. It exercises the current `messages` / `response`
+request shape, hardened `validateSql` cases, and rate limits on both
+`/api/query` and `/api/observe`. Note: the query rate-limiting section sleeps
+61 seconds to guarantee a clean window; total runtime is approximately two
+minutes including two Bedrock calls.
