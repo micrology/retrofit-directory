@@ -26,7 +26,7 @@ There is a compounding saving. Two prompt rules exist *only* to defend against c
 
 ## Current state
 
-- `buildLlmViewMappings` (`backend/csvToDB.mjs:326`) aliases 15 columns into the `orgs_llm` view, using `findColumnByTokens` heuristics against the cleaned survey headers.
+- `buildLlmViewMappings` (`backend/csvToDB.mjs`) aliases core columns into the `orgs_llm` view (including `postcode`), using `findColumnByTokens` heuristics against the cleaned survey headers.
 - Of the 21 audience columns, only `works_with_architects` is aliased.
 - `getDatabaseSchema` (`backend/csvToDB.mjs:112`) walks every table *and* view in `sqlite_master` and writes them all to `directory.schema`, which is what makes the file so large.
 - `readSchema()` (`backend/query.mjs:154`) loads that single file, and both `generateSqlFromQuery` and `regenerateSqlFromError` inject it.
@@ -41,6 +41,7 @@ In `csvToDB.mjs`, grow `orgs_llm` from 15 to roughly 37 columns so nothing is re
 - `funding_schemes` (and the two funding free-text columns if worth keeping)
 - `department_or_unit`
 - `org_main_type_other`, consolidating the three "other (please specify)" type columns
+- (done) `postcode` for headquarters postcode questions
 
 Match the 21 audience columns by prefix-and-suffix extraction rather than 21 hand-written token lists in `findColumnByTokens`; the latter would be fragile if the survey wording changes. Deliberately exclude survey platform metadata (`start_date`, `ip_address`, `progress`, `response_id`, `location_latitude`/`longitude`, etc.) and all `[EMPTY]` columns.
 

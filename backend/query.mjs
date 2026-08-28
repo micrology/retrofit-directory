@@ -46,7 +46,7 @@ const ANSWER_MAX_TOKENS = 2000
 const WRAPPER_MAX_TOKENS = 220
 const REFORMULATE_MAX_TOKENS = 120
 const ROUTE_MAX_TOKENS = 20
-const MAX_HISTORY_TURNS = 6
+const MAX_HISTORY_TURNS = 3 // number of previous turns kept for context in query reformulation
 const MAX_QUERY_LENGTH = 500
 const MAX_QUERY_LENGTH_WITH_CONTEXT = 1000
 const LONG_LIST_THRESHOLD = 25
@@ -72,6 +72,7 @@ const CANONICAL_LLM_COLUMNS = [
   'org_name',
   'org_main_type',
   'county',
+  'postcode',
   'geographic_scope',
   'operating_areas',
   'main_mission_or_remit',
@@ -305,8 +306,8 @@ export async function generateSqlFromQuery(userQuery) {
     - Use case-insensitive matching where appropriate (e.g., LIKE '%Manchester%') for text filters.
     - For list-style outputs (especially organisation names), use DISTINCT unless duplicates are explicitly requested.
     - The Directory contains duplicate entries: the same organisation can appear in more than one row. When the user asks to count organisations, count DISTINCT identities with COUNT(DISTINCT org_name) rather than COUNT(*), so each organisation is counted only once. Reserve COUNT(*) for counting raw rows/entries (e.g. survey responses) rather than distinct organisations.
-    - Prefer querying the canonical view orgs_llm when it is present in the schema; its columns are semantic aliases (e.g. org_name, county, org_main_type, works_with_architects) and should be preferred over long raw survey column names.
-    - If you reference any canonical alias column (e.g. org_name, org_main_type, county), you MUST query FROM orgs_llm (never FROM orgs).
+    - Prefer querying the canonical view orgs_llm when it is present in the schema; its columns are semantic aliases (e.g. org_name, county, postcode, org_main_type, works_with_architects) and should be preferred over long raw survey column names.
+    - If you reference any canonical alias column (e.g. org_name, org_main_type, county, postcode), you MUST query FROM orgs_llm (never FROM orgs).
     - Never select or filter on columns marked [EMPTY - no data]; they contain no values. For example, an organisation's "name" is the answer to the "name of the organisation" question column, NOT the empty recipient_first_name/recipient_last_name metadata columns.
     - Use the example values to map the user's terms to the correct column and its stored values. For multi-select questions, a populated cell (e.g. 'Directly'/'Indirectly') means the option was chosen; filter with "col" IS NOT NULL AND TRIM("col") != '' rather than assuming a 'Yes' value.
     - Disambiguation rule: if the user asks whether an organisation IS a type of organisation/persona (e.g. architect, engineer, local authority), use org_main_type (or the raw "main type" selected-choice column). Only use collaboration/audience columns such as works_with_architects when the user asks who the organisation works with.
@@ -340,7 +341,7 @@ export async function regenerateSqlFromError(userQuery, previousSql, sqliteError
     - Use the provided schema exactly.
     - For list-style outputs (especially organisation names), use DISTINCT unless duplicates are explicitly requested.
     - The Directory contains duplicate entries: when counting organisations, use COUNT(DISTINCT org_name) rather than COUNT(*).
-    - If you reference canonical alias columns (e.g. org_name, org_main_type, county), query FROM orgs_llm (not orgs).
+    - If you reference canonical alias columns (e.g. org_name, org_main_type, county, postcode), query FROM orgs_llm (not orgs).
     - Never select or filter on columns marked [EMPTY - no data].
     - Keep the corrected query semantically faithful to the original user question.
 
@@ -620,7 +621,7 @@ function enforceDistinctForOrgNameLists(sql) {
 app.use((err, req, res, next) => {
   const status = err.status || err.statusCode || 500
   const message =
-    status === 413 ? 'Request body too large' : status < 500 ? err.message : 'Internal Server Error'
+    status === 413 ? 'Out of memory - please start again by pressing the New button' : status < 500 ? err.message : 'Internal Server Error'
   res.status(status).json({ error: message })
 })
 

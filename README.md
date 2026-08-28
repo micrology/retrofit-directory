@@ -76,9 +76,15 @@ node backend/csvToDB.mjs [path to Qualtrics export file; default: ../directory.c
 ```
 
 The import step now also creates a canonical SQLite view `orgs_llm` with
-semantic aliases (for example `org_name`, `org_main_type`, `county`) and
-writes enriched `directory.schema` annotations including per-column population
-counts, sample values, and `[EMPTY - no data]` markers.
+semantic aliases (for example `org_name`, `org_main_type`, `county`, `postcode`)
+and writes enriched `directory.schema` annotations including per-column
+population counts, sample values, and `[EMPTY - no data]` markers.
+
+Then copy the database to the production server:
+
+```bash
+backend/deploy-directory-db.sh
+```
 
 ### Run as a systemd service
 
@@ -97,7 +103,7 @@ sudo journalctl -u retrofit-query-server -f
 ### Run manually (development)
 
 ```bash
-node backend/query.mjs
+VERBOSE=1 ADMIN_PASSWORD=<<admin password>> node backend/query.mjs
 # Listens on http://127.0.0.1:5001
 ```
 

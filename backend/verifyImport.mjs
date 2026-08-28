@@ -33,6 +33,7 @@ const EXPECTED_LLM_ALIASES = [
   "org_name",
   "org_main_type",
   "county",
+  "postcode",
   "geographic_scope",
   "operating_areas",
   "main_mission_or_remit",
@@ -250,6 +251,7 @@ function buildLlmViewMappings(columns) {
   addMapping("org_name", ["name", "organisation", "wish", "add", "directory"]);
   addMapping("org_main_type", ["main", "type", "selected", "choice"]);
   addMapping("county", ["ukbased", "county", "based"]);
+  addMapping("postcode", ["postcode", "organisation", "headquarters"]);
   addMapping("geographic_scope", ["geographic", "scope", "cover"]);
   addMapping("operating_areas", ["geographic", "areas", "operating", "selected", "choice"]);
   addMapping("main_mission_or_remit", ["main", "mission", "remit", "organisation"]);
