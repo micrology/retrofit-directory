@@ -67,3 +67,5 @@ directory.csv
 # ONS Postcode Directory bulk download (local import only; do not commit)
 backend/geo/
 !backend/geo/README.md
+# Runtime geocode cache (postcodes.io results)
+backend/geo/geocode-cache.json

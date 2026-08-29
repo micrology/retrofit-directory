@@ -20,6 +20,7 @@ import {
   getUsageSummary,
   getTodayTokenTotal,
 } from './usage.mjs'
+import { tryAnswerProximityQuery } from './proximity.mjs'
 /**
  * HTTP API for natural-language querying over the retrofit SQLite directory
  * and Bedrock Knowledge Base policy documents.
@@ -316,7 +317,8 @@ export async function generateSqlFromQuery(userQuery) {
     - Use the example values to map the user's terms to the correct column and its stored values. For multi-select questions, a populated cell (e.g. 'Directly'/'Indirectly') means the option was chosen; filter with "col" IS NOT NULL AND TRIM("col") != '' rather than assuming a 'Yes' value.
     - Disambiguation rule: if the user asks whether an organisation IS a type of organisation/persona (e.g. architect, engineer, local authority), use org_main_type (or the raw "main type" selected-choice column). Only use collaboration/audience columns such as works_with_architects when the user asks who the organisation works with.
     - Place / location questions ("in Wokingham", "based in Manchester", "how many in Kent"): filter with case-insensitive LIKE against local_authority, parish, and/or county as appropriate. local_authority is the ONS local authority district derived from the HQ postcode (e.g. Wokingham); parish is the civil parish when present; county is the survey self-report (often a ceremonial/historic county such as Berkshire (England)). Prefer local_authority for towns and unitary/district names; use county when the user names a county that matches survey values. OR across place columns when a single place name might appear in more than one field. Do not invent postcode prefixes.
-    - IMPORTANT: never use survey IP geolocation for organisation location. hq_latitude/hq_longitude are the HQ postcode centroid from ONSPD and may be used for proximity only when present. Survey location_latitude/location_longitude (if present on raw orgs) are respondent IP location and must not be used.
+    - Do NOT write Haversine/distance SQL for "near", "nearest", "within N miles", or "closest to" questions — those are handled outside text-to-SQL. If you somehow receive one, fall back to local_authority/parish/county text filters only.
+    - IMPORTANT: never use survey IP geolocation for organisation location. hq_latitude/hq_longitude are HQ postcode centroids (ONSPD). Survey location_latitude/location_longitude (if present on raw orgs) are respondent IP location and must not be used.
 
     Schema:
     ${schema}
@@ -1045,7 +1047,22 @@ app.post('/api/query', async (req, res) =>
         return respondAndLog({ response: answer, sources })
       }
 
-      // Directory path: text-to-SQL over the organisation survey database.
+      // Directory path: proximity (near/nearest) is deterministic; otherwise text-to-SQL.
+      const proximity = await tryAnswerProximityQuery(safeQuery, DB_PATH)
+      if (proximity.handled) {
+        logEntry.sqlQuery = proximity.sqlQuery
+        logEntry.rowCount = proximity.rowCount
+        logEntry.response = proximity.answer
+        logEntry.outcome = 'ok'
+        logAPICalls('Proximity query processed:', {
+          safeQuery,
+          sqlQuery: proximity.sqlQuery,
+          rowCount: proximity.rowCount,
+          meta: proximity.meta,
+        })
+        return respondAndLog({ response: proximity.answer, sources: [] })
+      }
+
       const generatedSqlQuery = await generateSqlFromQuery(safeQuery)
       let sqlQuery = extractSqlFromLlmOutput(generatedSqlQuery)
       sqlQuery = alignCanonicalColumnsToLlmView(sqlQuery)

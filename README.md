@@ -123,6 +123,26 @@ postcodes falls below **0.95** (override with `--min-match-rate 0.90` or
 After `--deploy`, restart `retrofit-query-server` on the host if it keeps a DB
 handle open across replaces.
 
+#### Proximity search (near / nearest)
+
+Questions such as “organisations in and near Reading”, “within 10 miles of
+Oxford”, or “nearest installer to Guildford” are handled **deterministically**
+(not via free-form Haversine SQL from the LLM):
+
+1. `backend/proximity.mjs` detects near/nearest intent and optional type filters
+   (installer, architect, …).
+2. `backend/geocode.mjs` resolves the place (seed gazetteer → disk cache →
+   [postcodes.io](https://postcodes.io)).
+3. Crow-flies distance is computed in Node against `hq_latitude` / `hq_longitude`
+   already stored on `orgs_llm`.
+
+Default “near” radius is **25 miles**. Exact “in Wokingham” style questions still
+use text-to-SQL on `local_authority` / `parish` / `county`. Offline checks:
+
+```bash
+node backend/test-proximity.mjs
+```
+
 Or copy the database alone:
 
 ```bash
