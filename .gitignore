@@ -63,3 +63,7 @@ directory.csv
 *.csv
 *.xlsx
 *.xls
+
+# ONS Postcode Directory bulk download (local import only; do not commit)
+backend/geo/
+!backend/geo/README.md

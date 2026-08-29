@@ -34,6 +34,10 @@ const EXPECTED_LLM_ALIASES = [
   "org_main_type",
   "county",
   "postcode",
+  "local_authority",
+  "parish",
+  "hq_latitude",
+  "hq_longitude",
   "geographic_scope",
   "operating_areas",
   "main_mission_or_remit",
@@ -252,6 +256,9 @@ function buildLlmViewMappings(columns) {
   addMapping("org_main_type", ["main", "type", "selected", "choice"]);
   addMapping("county", ["ukbased", "county", "based"]);
   addMapping("postcode", ["postcode", "organisation", "headquarters"]);
+  for (const name of ["local_authority", "parish", "hq_latitude", "hq_longitude"]) {
+    if (columns.includes(name)) mappings.push({ alias: name, source: name });
+  }
   addMapping("geographic_scope", ["geographic", "scope", "cover"]);
   addMapping("operating_areas", ["geographic", "areas", "operating", "selected", "choice"]);
   addMapping("main_mission_or_remit", ["main", "mission", "remit", "organisation"]);
@@ -386,13 +393,18 @@ async function main() {
       ok(`Row count matches: ${rowCount}`);
     }
 
-    if (dbCols.length !== cleanedColumns.length) {
-      issue(`Column count mismatch: DB=${dbCols.length} expected=${cleanedColumns.length}`);
+    const enrichmentCols = ["local_authority", "parish", "hq_latitude", "hq_longitude"];
+    const expectedDbCols = [...cleanedColumns];
+    const hasEnrichment = enrichmentCols.every((c) => dbCols.includes(c));
+    if (hasEnrichment) expectedDbCols.push(...enrichmentCols);
+
+    if (dbCols.length !== expectedDbCols.length) {
+      issue(`Column count mismatch: DB=${dbCols.length} expected=${expectedDbCols.length}`);
     } else {
       ok(`Column count matches: ${dbCols.length}`);
     }
 
-    for (let i = 0; i < Math.max(dbCols.length, cleanedColumns.length); i += 1) {
+    for (let i = 0; i < cleanedColumns.length; i += 1) {
       if (dbCols[i] !== cleanedColumns[i]) {
         issue(
           `Column ${i} name mismatch: DB=${JSON.stringify(dbCols[i])} expected=${JSON.stringify(cleanedColumns[i])}`
@@ -400,8 +412,10 @@ async function main() {
       }
     }
     if (!issues.some((msg) => msg.includes("Column ") && msg.includes("name mismatch"))) {
-      ok("All column names match expected cleaned headers");
+      ok("All survey column names match expected cleaned headers");
     }
+    if (hasEnrichment) ok("Postcode enrichment columns present (local_authority, parish, hq_lat/lon)");
+    else note("Postcode enrichment columns absent (ONSPD not applied?)");
 
     const dbRows = await all(
       db,
@@ -490,16 +504,21 @@ async function main() {
       const viewCols = viewInfo.map((col) => col.name);
       console.log(`${LLM_VIEW_NAME} columns: ${viewCols.join(", ")}`);
 
+      const optionalEnrichment = new Set(["local_authority", "parish", "hq_latitude", "hq_longitude"]);
       for (const alias of EXPECTED_LLM_ALIASES) {
-        if (!viewCols.includes(alias)) issue(`${LLM_VIEW_NAME} missing alias ${alias}`);
+        if (!viewCols.includes(alias)) {
+          if (optionalEnrichment.has(alias)) note(`${LLM_VIEW_NAME} missing optional alias ${alias}`);
+          else issue(`${LLM_VIEW_NAME} missing alias ${alias}`);
+        }
       }
 
       const viewCount = (await get(db, `SELECT COUNT(*) AS c FROM ${quoteIdentifier(LLM_VIEW_NAME)}`)).c;
       if (viewCount !== rowCount) issue(`${LLM_VIEW_NAME} row count ${viewCount} != ${TABLE_NAME} ${rowCount}`);
       else ok(`${LLM_VIEW_NAME} row count matches ${TABLE_NAME} (${viewCount})`);
 
-      const mappings = buildLlmViewMappings(cleanedColumns);
+      const mappings = buildLlmViewMappings(dbCols);
       for (const alias of EXPECTED_LLM_ALIASES) {
+        if (!viewCols.includes(alias)) continue; // enrichment may be absent without ONSPD
         if (!mappings.some((m) => m.alias === alias)) issue(`No source column mapped for LLM alias ${alias}`);
       }
       if (!issues.some((msg) => msg.includes("LLM alias"))) {

@@ -76,11 +76,54 @@ node backend/csvToDB.mjs [path to Qualtrics export file; default: ../directory.c
 ```
 
 The import step now also creates a canonical SQLite view `orgs_llm` with
-semantic aliases (for example `org_name`, `org_main_type`, `county`, `postcode`)
-and writes enriched `directory.schema` annotations including per-column
-population counts, sample values, and `[EMPTY - no data]` markers.
+semantic aliases (for example `org_name`, `org_main_type`, `county`, `postcode`,
+`local_authority`) and writes enriched `directory.schema` annotations including
+per-column population counts, sample values, and `[EMPTY - no data]` markers.
 
-Then copy the database to the production server:
+#### HQ place enrichment (ONSPD)
+
+If an ONS Postcode Directory zip is present at `backend/geo/ONSPD_*.zip`, import
+resolves each organisation headquarters postcode to:
+
+- `local_authority` — ONS local authority district (e.g. Wokingham)
+- `parish` — civil parish when available
+- `hq_latitude` / `hq_longitude` — postcode centroid
+
+These fields are stored on `orgs`, exposed on `orgs_llm`, and preferred by
+text-to-SQL for “in / based in <place>” questions. Survey `county` is kept as
+the self-reported value.
+
+ONSPD is free under the Open Government Licence (Open Geography portal). Place
+the zip only on the machine that runs `csvToDB` (gitignored); production needs
+only the rebuilt `directory.db`. Re-run enrichment on every weekly survey import
+so new postcodes are resolved automatically. Refresh the ONSPD zip roughly
+quarterly.
+
+```bash
+mkdir -p backend/geo
+# Download latest ONSPD zip from the Open Geography portal into backend/geo/
+node backend/csvToDB.mjs [path to Qualtrics export]
+```
+
+#### Weekly refresh (import → verify → optional deploy)
+
+For recurring Qualtrics updates, use the wrapper (requires `backend/geo/ONSPD_*.zip`):
+
+```bash
+# Local rebuild + integrity checks only
+backend/refresh-directory.sh path/to/qualtrics-export.xlsx
+
+# Same, then scp directory.db to production
+backend/refresh-directory.sh path/to/qualtrics-export.xlsx --deploy
+```
+
+The script fails if the postcode→`local_authority` match rate for non-blank HQ
+postcodes falls below **0.95** (override with `--min-match-rate 0.90` or
+`MIN_MATCH_RATE`). It also fails if ONSPD is missing unless `SKIP_ONSPD_CHECK=1`.
+After `--deploy`, restart `retrofit-query-server` on the host if it keeps a DB
+handle open across replaces.
+
+Or copy the database alone:
 
 ```bash
 backend/deploy-directory-db.sh

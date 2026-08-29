@@ -4,6 +4,12 @@ import { fileURLToPath } from 'node:url'
 import { parse } from 'csv-parse/sync'
 import sqlite3 from 'sqlite3'
 import XLSX from 'xlsx'
+import {
+  ENRICHMENT_COLUMNS,
+  applyPostcodeEnrichment,
+  enrichPostcodesFromOnspd,
+  findOnspdSource,
+} from './geoPostcodes.mjs'
 /**
  * Import the source CSV into a local SQLite database and emit a plain-text
  * schema snapshot used by the query service.
@@ -398,6 +404,10 @@ function buildLlmViewMappings(columns) {
   addMapping('org_main_type', ['main', 'type', 'selected', 'choice'])
   addMapping('county', ['ukbased', 'county', 'based'])
   addMapping('postcode', ['postcode', 'organisation', 'headquarters'])
+  // Derived HQ place fields (added by ONSPD enrichment; identity-mapped when present).
+  for (const { name } of ENRICHMENT_COLUMNS) {
+    if (columns.includes(name)) mappings.push({ alias: name, source: name })
+  }
   addMapping('geographic_scope', ['geographic', 'scope', 'cover'])
   addMapping('operating_areas', ['geographic', 'areas', 'operating', 'selected', 'choice'])
   addMapping('main_mission_or_remit', ['main', 'mission', 'remit', 'organisation'])
@@ -485,7 +495,49 @@ async function main() {
       await run(db, insertSql, normalizedRow)
     }
 
-    const viewMappings = buildLlmViewMappings(cleanedColumns)
+    // HQ place enrichment from local ONSPD (weekly-safe: all postcodes in this export).
+    const postcodeColumn = findColumnByTokens(cleanedColumns, ['postcode', 'organisation', 'headquarters'])
+    let enrichedColumns = [...cleanedColumns]
+    if (postcodeColumn) {
+      const postcodes = (
+        await all(
+          db,
+          `SELECT DISTINCT ${quoteIdentifier(postcodeColumn)} AS pc FROM ${quoteIdentifier(TABLE_NAME)} WHERE ${quoteIdentifier(postcodeColumn)} IS NOT NULL`
+        )
+      ).map((r) => r.pc)
+
+      const onspd = findOnspdSource()
+      if (!onspd) {
+        console.warn(
+          'ONSPD not found under backend/geo/ (expected ONSPD_*.zip). Skipping postcode place enrichment.'
+        )
+      } else {
+        console.log(`ONSPD source: ${onspd.path}`)
+        const enrichment = enrichPostcodesFromOnspd(postcodes)
+        const updated = await applyPostcodeEnrichment(
+          db,
+          TABLE_NAME,
+          postcodeColumn,
+          enrichment.byCompact,
+          run,
+          all
+        )
+        enrichedColumns = [...cleanedColumns, ...ENRICHMENT_COLUMNS.map((c) => c.name)]
+        console.log(
+          `Postcode enrichment: ${enrichment.matched.length} matched, ${enrichment.unmatched.length} unmatched, ${updated} rows updated`
+        )
+        if (enrichment.unmatched.length) {
+          console.warn(`Unmatched postcodes: ${enrichment.unmatched.join(', ')}`)
+        }
+        if (enrichment.missingAreas.length) {
+          console.warn(`Missing ONSPD area CSVs: ${enrichment.missingAreas.join(', ')}`)
+        }
+      }
+    } else {
+      console.warn('No headquarters postcode column found; skipping place enrichment.')
+    }
+
+    const viewMappings = buildLlmViewMappings(enrichedColumns)
     if (viewMappings.length > 0) {
       await run(db, `DROP VIEW IF EXISTS ${quoteIdentifier(LLM_VIEW_NAME)}`)
       const viewSelect = viewMappings

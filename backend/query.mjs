@@ -73,6 +73,10 @@ const CANONICAL_LLM_COLUMNS = [
   'org_main_type',
   'county',
   'postcode',
+  'local_authority',
+  'parish',
+  'hq_latitude',
+  'hq_longitude',
   'geographic_scope',
   'operating_areas',
   'main_mission_or_remit',
@@ -306,12 +310,13 @@ export async function generateSqlFromQuery(userQuery) {
     - Use case-insensitive matching where appropriate (e.g., LIKE '%Manchester%') for text filters.
     - For list-style outputs (especially organisation names), use DISTINCT unless duplicates are explicitly requested.
     - The Directory contains duplicate entries: the same organisation can appear in more than one row. When the user asks to count organisations, count DISTINCT identities with COUNT(DISTINCT org_name) rather than COUNT(*), so each organisation is counted only once. Reserve COUNT(*) for counting raw rows/entries (e.g. survey responses) rather than distinct organisations.
-    - Prefer querying the canonical view orgs_llm when it is present in the schema; its columns are semantic aliases (e.g. org_name, county, postcode, org_main_type, works_with_architects) and should be preferred over long raw survey column names.
-    - If you reference any canonical alias column (e.g. org_name, org_main_type, county, postcode), you MUST query FROM orgs_llm (never FROM orgs).
+    - Prefer querying the canonical view orgs_llm when it is present in the schema; its columns are semantic aliases (e.g. org_name, county, postcode, local_authority, parish, org_main_type, works_with_architects) and should be preferred over long raw survey column names.
+    - If you reference any canonical alias column (e.g. org_name, org_main_type, county, postcode, local_authority), you MUST query FROM orgs_llm (never FROM orgs).
     - Never select or filter on columns marked [EMPTY - no data]; they contain no values. For example, an organisation's "name" is the answer to the "name of the organisation" question column, NOT the empty recipient_first_name/recipient_last_name metadata columns.
     - Use the example values to map the user's terms to the correct column and its stored values. For multi-select questions, a populated cell (e.g. 'Directly'/'Indirectly') means the option was chosen; filter with "col" IS NOT NULL AND TRIM("col") != '' rather than assuming a 'Yes' value.
     - Disambiguation rule: if the user asks whether an organisation IS a type of organisation/persona (e.g. architect, engineer, local authority), use org_main_type (or the raw "main type" selected-choice column). Only use collaboration/audience columns such as works_with_architects when the user asks who the organisation works with.
-    - IMPORTANT: location_latitude/location_longitude are the survey respondent's IP-based geolocation at submission time, NOT the organisation's location. Do not use them for distance/proximity questions - they are unreliable and often disagree with the organisation's actual location. For any location or proximity question, use the self-reported county column ("for_uk-based_organisations,_in_which_county_is_it_based?") instead.
+    - Place / location questions ("in Wokingham", "based in Manchester", "how many in Kent"): filter with case-insensitive LIKE against local_authority, parish, and/or county as appropriate. local_authority is the ONS local authority district derived from the HQ postcode (e.g. Wokingham); parish is the civil parish when present; county is the survey self-report (often a ceremonial/historic county such as Berkshire (England)). Prefer local_authority for towns and unitary/district names; use county when the user names a county that matches survey values. OR across place columns when a single place name might appear in more than one field. Do not invent postcode prefixes.
+    - IMPORTANT: never use survey IP geolocation for organisation location. hq_latitude/hq_longitude are the HQ postcode centroid from ONSPD and may be used for proximity only when present. Survey location_latitude/location_longitude (if present on raw orgs) are respondent IP location and must not be used.
 
     Schema:
     ${schema}
@@ -341,7 +346,8 @@ export async function regenerateSqlFromError(userQuery, previousSql, sqliteError
     - Use the provided schema exactly.
     - For list-style outputs (especially organisation names), use DISTINCT unless duplicates are explicitly requested.
     - The Directory contains duplicate entries: when counting organisations, use COUNT(DISTINCT org_name) rather than COUNT(*).
-    - If you reference canonical alias columns (e.g. org_name, org_main_type, county, postcode), query FROM orgs_llm (not orgs).
+    - If you reference canonical alias columns (e.g. org_name, org_main_type, county, postcode, local_authority), query FROM orgs_llm (not orgs).
+    - For place filters, use local_authority / parish / county (LIKE), not invented postcode districts.
     - Never select or filter on columns marked [EMPTY - no data].
     - Keep the corrected query semantically faithful to the original user question.
 
