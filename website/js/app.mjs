@@ -9,7 +9,7 @@ import 'https://cdn.jsdelivr.net/npm/@knadh/oat@0.7.1/oat.min.js'
 const SUGGESTION_PROMPTS = [
   "What is 'retrofit'?",
   'How many organisations related to retrofit are located in Bristol?',
-  'Is there an architect in the database that is located in Hampshire?',
+  'Is there an architect near Portsmouth?',
   'What is PAS2035?',
 ]
 
