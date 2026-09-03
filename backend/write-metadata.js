@@ -40,6 +40,7 @@ async function main() {
     }
 
     // Allow pasting a bare name, name.pdf, or full sidecar name.
+    fileName = path.basename(fileName);
     fileName = fileName.replace(/\.pdf\.metadata\.json$/i, "");
     fileName = fileName.replace(/\.metadata\.json$/i, "");
     if (!fileName.toLowerCase().endsWith(".pdf")) {

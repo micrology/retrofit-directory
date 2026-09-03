@@ -90,7 +90,7 @@ resolves each organisation headquarters postcode to:
 - `hq_latitude` / `hq_longitude` — postcode centroid
 
 These fields are stored on `orgs`, exposed on `orgs_llm`, and preferred by
-text-to-SQL for “in / based in <place>” questions. Survey `county` is kept as
+text-to-SQL for “in / based in `place` questions. Survey `county` is kept as
 the self-reported value.
 
 ONSPD is free under the Open Government Licence (Open Geography portal). Place
