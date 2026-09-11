@@ -36,7 +36,7 @@ const BEDROCK_REGION = 'eu-west-2'
 const BEDROCK_MODEL_ID = 'eu.anthropic.claude-haiku-4-5-20251001-v1:0'
 const CHEAP_MODEL_ID = 'qwen.qwen3-235b-a22b-2507-v1:0'
 /** Unstructured policy corpus (S3-backed Bedrock Knowledge Base). */
-const KNOWLEDGE_BASE_ID = 'WTVA5TOLIX'
+const KNOWLEDGE_BASE_ID = 'U8L4ZLT14K'
 /**
  * Model ARN/id passed to RetrieveAndGenerate. Cross-region inference profile
  * ids (eu.anthropic...) are accepted as the modelArn value in recent Agents Runtime APIs.
