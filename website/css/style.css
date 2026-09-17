@@ -273,7 +273,7 @@ main.main-content {
 #chat-container {
   position: relative;
   width: 100%;
-  height: auto; 
+  height: auto;
   max-height: calc(100vh - 160px);
   background: var(--surface-color);
   border: 1px solid var(--border-color);
@@ -298,6 +298,17 @@ main.main-content {
   font-weight: inherit;
   color: inherit;
 }
+#chat-header .chat-heading-btn {
+  background-color: var(--accent-color);
+  color: #ffffff;
+  border: 1px solid white;
+  float: right;
+}
+#chat-header .chat-heading-btn:hover {
+  background-color: var(--primary-color);
+  border-color: var(--accent-color);
+}
+
 .chat-heading-version {
   float: right;
   font-size: small;
@@ -1105,7 +1116,6 @@ body.auth-locked footer {
     transition: none !important;
   }
 }
-
 
 .visually-hidden {
   position: absolute;

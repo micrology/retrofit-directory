@@ -35,6 +35,7 @@ document.addEventListener('DOMContentLoaded', () => {
 function initChat() {
   const form = document.getElementById('chat-form')
   const statusEl = document.getElementById('chat-status')
+  const joinBtn = document.getElementById('btnJoin')
   const sendBtn = document.getElementById('btnSend')
   const copyChat = document.getElementById('btnCopy')
   const newChat = document.getElementById('btnNew')
@@ -42,6 +43,10 @@ function initChat() {
   const messagesDiv = document.getElementById('chat-messages')
 
   if (!form || !sendBtn || !copyChat || !newChat || !userInput || !messagesDiv) return
+
+  joinBtn.addEventListener('click', () => {
+    document.location = 'https://surreyfbel.qualtrics.com/jfe/form/SV_4OVUcAI9I1742N0'
+  })
 
   let chatHistory = []
   let isSending = false
