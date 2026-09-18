@@ -185,7 +185,8 @@ function scorePlaceResult(place, key) {
   let score = 0
   if (name === key) score += 200
   else if (name.startsWith(key + ' ')) score += 80
-  else if (name.includes(key)) score += 40
+  // Avoid “me” → “Pity Me”: short tokens must not match as substrings inside longer names.
+  else if (key.length >= 3 && name.includes(key)) score += 40
   else return -1
 
   const localType = String(place.local_type || '').toLowerCase()
@@ -283,6 +284,8 @@ export async function geocodePlace(placeName, options = {}) {
   const allowNetwork = options.allowNetwork !== false
   const key = normalisePlaceKey(placeName)
   if (!key || key.length < 2) return null
+  // Reject self-referential “near me/here” tokens (keep 2-char outcodes like M1).
+  if (/^(?:me|here|there|nearby)$/i.test(key)) return null
 
   const seed = SEED_GAZETTEER[key]
   if (seed) {

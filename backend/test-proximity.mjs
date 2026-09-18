@@ -8,6 +8,7 @@ import {
   parseProximityIntent,
   tryAnswerProximityQuery,
   findOrganisationsNear,
+  isUnspecifiedUserLocation,
   DEFAULT_NEAR_RADIUS_MILES,
 } from './proximity.mjs'
 
@@ -41,6 +42,12 @@ function check(label, cond) {
 
   const e = parseProximityIntent('architects near Bath')
   check('near with type', e?.kind === 'near' && e.typeFilter?.id === 'architect' && e.placeText === 'Bath')
+
+  const nearMe = parseProximityIntent('Is there an architect near me')
+  check(
+    'near me parses place me',
+    nearMe?.kind === 'near' && nearMe.placeText === 'me' && nearMe.typeFilter?.id === 'architect'
+  )
 }
 
 // --- geocode seed ---
@@ -95,6 +102,18 @@ function check(label, cond) {
 
   const fallthrough = await tryAnswerProximityQuery('How many organisations are in Bristol?', DB_PATH)
   check('non-proximity falls through', fallthrough.handled === false)
+
+  const nearMeAnswer = await tryAnswerProximityQuery('Is there an architect near me', DB_PATH)
+  check('near me is handled', nearMeAnswer.handled === true)
+  check('near me asks for location', /postcode|town or city/i.test(nearMeAnswer.answer))
+  check('near me does not invent Pity Me', !/pity me/i.test(nearMeAnswer.answer))
+  check('near me meta needsLocation', nearMeAnswer.meta?.needsLocation === true)
+  check('isUnspecifiedUserLocation me', isUnspecifiedUserLocation('me'))
+  check('isUnspecifiedUserLocation here', isUnspecifiedUserLocation('here'))
+  check('isUnspecifiedUserLocation Reading false', !isUnspecifiedUserLocation('Reading'))
+
+  const geoMe = await geocodePlace('me')
+  check('geocode me rejects', geoMe === null)
 }
 
 process.exit(fail)

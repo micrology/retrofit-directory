@@ -9,6 +9,15 @@ export const DEFAULT_NEAR_LIMIT = 25
 export const DEFAULT_NEAREST_LIMIT = 1
 const MAX_RADIUS_MILES = 200
 const MAX_NEAREST_LIMIT = 10
+/**
+ * Place captures that mean “the user’s location” rather than a UK place name.
+ * “near me” must not be geocoded (postcodes.io can resolve “me” to Pity Me).
+ */
+const UNSPECIFIED_USER_LOCATION =
+  /^(?:me|here|my\s+(?:area|location|place|home|house|address|town|city|village)|where\s+i\s+(?:am|live|live\s+now)|this\s+(?:area|location|place)|current\s+location)$/i
+/** Reply when the user asks for nearby orgs without giving a place. */
+export const ASK_FOR_LOCATION_RESPONSE =
+  'I can look nearby in the Retrofit Directory, but I need to know where you are. Please reply with a UK postcode or a nearby town or city.'
 
 /**
  * Activity / type tokens mapped to SQL LIKE patterns across org fields.
@@ -205,6 +214,29 @@ function cleanPlaceCapture(raw) {
 }
 
 /**
+ * True when the captured place is a self-referential “my location” phrase, not a
+ * geocodable UK town/postcode (e.g. “near me”, “closest to where I live”).
+ * @param {string} placeText
+ * @returns {boolean}
+ */
+export function isUnspecifiedUserLocation(placeText) {
+  const key = normalisePlaceKey(placeText)
+  if (!key) return true
+  return UNSPECIFIED_USER_LOCATION.test(key)
+}
+
+/**
+ * @param {{ id: string, label: string } | null | undefined} typeFilter
+ * @returns {string}
+ */
+function askForLocationAnswer(typeFilter) {
+  if (typeFilter?.label) {
+    return `I can look for ${typeFilter.label} near you in the Retrofit Directory, but I need to know where you are. Please reply with a UK postcode or a nearby town or city.`
+  }
+  return ASK_FOR_LOCATION_RESPONSE
+}
+
+/**
  * @param {string} dbPath
  * @returns {Promise<sqlite3.Database>}
  */
@@ -331,6 +363,18 @@ export async function findOrganisationsNear(dbPath, origin, options = {}) {
 export async function tryAnswerProximityQuery(userQuery, dbPath, deps = {}) {
   const intent = parseProximityIntent(userQuery)
   if (!intent) return { handled: false }
+
+  // “near me” / “near here” — do not geocode; ask for a concrete place first.
+  if (isUnspecifiedUserLocation(intent.placeText)) {
+    return {
+      handled: true,
+      answer: askForLocationAnswer(intent.typeFilter),
+      sqlQuery: `-- proximity: unspecified user location ${JSON.stringify(intent.placeText)}`,
+      rowCount: 0,
+      rows: [],
+      meta: { intent, geo: null, needsLocation: true },
+    }
+  }
 
   const geocode = deps.geocode || geocodePlace
   const geo = await geocode(intent.placeText)
@@ -479,4 +523,6 @@ export const _test = {
   TYPE_FILTERS,
   normalisePlaceKey,
   milesToKm,
+  isUnspecifiedUserLocation,
+  askForLocationAnswer,
 }
