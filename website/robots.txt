@@ -1,0 +1,7 @@
+# https://retrofit-directory.org.uk/robots.txt
+User-agent: *
+Allow: /
+Disallow: /admin.html
+Disallow: /js/admin.mjs
+
+Sitemap: https://retrofit-directory.org.uk/sitemap.xml

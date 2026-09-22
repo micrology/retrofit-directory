@@ -42,7 +42,7 @@ Options -Indexes
     Header set Cache-Control "public, max-age=0, must-revalidate"
   </FilesMatch>
 
-  <FilesMatch "\.(css|js|mjs|png|jpe?g|gif|webp|svg|ico|woff2?|ttf|eot|otf)$">
+  <FilesMatch "\.(css|js|mjs|png|jpe?g|gif|webp|svg|ico|woff2?|ttf|eot|otf|avif)$">
     Header set Cache-Control "public, max-age=86400"
   </FilesMatch>
 </IfModule>
