@@ -1,3 +1,21 @@
+/**
+ * Resolve UK place names to WGS84 centroids for proximity search.
+ *
+ * Lookup order: in-memory seed gazetteer → on-disk cache → postcodes.io
+ * places/outcodes. Production does not need ONSPD; organisation HQ
+ * coordinates already live in `directory.db`.
+ *
+ * Library module (not a CLI). Used by:
+ *   proximity.mjs          — near/nearest answers in the query server
+ *   test-proximity.mjs     — offline unit tests
+ *
+ * Disk cache: backend/geo/geocode-cache.json (created on first network hit).
+ *
+ * @license MIT
+ * Copyright (c) 2025–2026 Nigel Gilbert and contributors
+ * University of Surrey — INHABIT / National Retrofit Hub
+ */
+
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -327,6 +345,11 @@ export async function geocodePlace(placeName, options = {}) {
  * @returns {number}
  */
 export function haversineKm(lat1, lon1, lat2, lon2) {
+  /**
+   * Convert degrees to radians.
+   * @param {number} d
+   * @returns {number}
+   */
   const toRad = (d) => (d * Math.PI) / 180
   const r = 6371
   const dLat = toRad(lat2 - lat1)
@@ -337,10 +360,20 @@ export function haversineKm(lat1, lon1, lat2, lon2) {
   return 2 * r * Math.asin(Math.min(1, Math.sqrt(a)))
 }
 
+/**
+ * Convert kilometres to miles.
+ * @param {number} km
+ * @returns {number}
+ */
 export function kmToMiles(km) {
   return km * 0.621371
 }
 
+/**
+ * Convert miles to kilometres.
+ * @param {number} miles
+ * @returns {number}
+ */
 export function milesToKm(miles) {
   return miles / 0.621371
 }

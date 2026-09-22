@@ -9,5 +9,7 @@
     "http-terminator": "^3.2.0",
     "sqlite3": "^6.0.1",
     "xlsx": "^0.18.5"
-  }
+  },
+  "license": "MIT",
+  "description": "Searchable UK housing-retrofit organisation directory (INHABIT / National Retrofit Hub)"
 }

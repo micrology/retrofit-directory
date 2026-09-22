@@ -3,5 +3,7 @@
     "@knadh/oat": "^0.7.1",
     "dompurify": "^3.4.12",
     "marked": "^18.0.7"
-  }
+  },
+  "license": "MIT",
+  "description": "Searchable UK housing-retrofit organisation directory (INHABIT / National Retrofit Hub)"
 }

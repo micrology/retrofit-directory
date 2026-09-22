@@ -11,6 +11,10 @@
  *   node generate-policy-metadata.js [rdf-path]
  *   node generate-policy-metadata.js --rdf <path>
  *   node generate-policy-metadata.js --rdf=<path>
+ *
+ * @license MIT
+ * Copyright (c) 2025–2026 Nigel Gilbert and contributors
+ * University of Surrey — INHABIT / National Retrofit Hub
  */
 
 const fs = require("fs");
@@ -19,6 +23,11 @@ const path = require("path");
 const POLICIES_DIR = path.join(__dirname, "Policies");
 const DEFAULT_RDF_PATH = path.join(POLICIES_DIR, "Policy documents_v3.rdf");
 
+/**
+ * Parse CLI argv into an options object.
+ * @param {string[]} argv
+ * @returns {object}
+ */
 function parseArgs(argv) {
   const args = argv.slice(2);
   let dryRun = false;
@@ -93,6 +102,11 @@ A bare positional argument is treated as the RDF path.`);
 
 const { dryRun: DRY_RUN, rdfPath: RDF_PATH } = parseArgs(process.argv);
 
+/**
+ * Decode common XML/HTML entities in a string.
+ * @param {string} value
+ * @returns {string}
+ */
 function decodeXmlEntities(value) {
   if (!value) return "";
   return value
@@ -104,6 +118,12 @@ function decodeXmlEntities(value) {
     .trim();
 }
 
+/**
+ * Return concatenated text content of the first matching XML tag.
+ * @param {string} xml
+ * @param {string} tagName
+ * @returns {string}
+ */
 function textContent(xml, tagName) {
   // Match simple text-only elements, including optional attributes on the open tag.
   const re = new RegExp(
@@ -129,6 +149,12 @@ function stripNestedContainers(xml) {
     .replace(/<bib:authors\b[^>]*>[\s\S]*?<\/bib:authors>/gi, "");
 }
 
+/**
+ * Return text contents for every matching XML tag.
+ * @param {string} xml
+ * @param {string} tagName
+ * @returns {string[]}
+ */
 function allTextContents(xml, tagName) {
   const re = new RegExp(
     `<${tagName}(?:\\s[^>]*)?>([\\s\\S]*?)</${tagName}>`,
@@ -144,6 +170,12 @@ function allTextContents(xml, tagName) {
   return values;
 }
 
+/**
+ * Read an attribute value from an XML start-tag snippet.
+ * @param {string} tag
+ * @param {string} attr
+ * @returns {string | null}
+ */
 function attrValue(openTag, attrName) {
   const re = new RegExp(`${attrName}="([^"]*)"`, "i");
   const match = openTag.match(re);
@@ -168,6 +200,11 @@ function parseTopLevelBlocks(rdfXml) {
   return blocks;
 }
 
+/**
+ * Extract author names from Zotero/RDF XML.
+ * @param {string} xml
+ * @returns {string[]}
+ */
 function extractAuthors(itemBody) {
   // Authors live under bib:authors > rdf:Seq > rdf:li > foaf:Person
   const authorsBlockMatch = itemBody.match(
@@ -188,6 +225,11 @@ function extractAuthors(itemBody) {
   return people;
 }
 
+/**
+ * Format a single author name for display.
+ * @param {string | object} author
+ * @returns {string}
+ */
 function formatAuthorName({ surname, givenName }) {
   if (surname && givenName) {
     // "Barbrook-Johnson, P." style when a given name is present
@@ -202,6 +244,11 @@ function formatAuthorName({ surname, givenName }) {
   return surname || givenName;
 }
 
+/**
+ * Format a list of authors for metadata display.
+ * @param {string[]} authors
+ * @returns {string}
+ */
 function formatAuthorList(authors) {
   const names = authors.map(formatAuthorName).filter(Boolean);
   if (names.length === 0) return "";
@@ -210,12 +257,22 @@ function formatAuthorList(authors) {
   return `${names.slice(0, -1).join(", ")}, & ${names[names.length - 1]}`;
 }
 
+/**
+ * Extract a four-digit year from a date string, if present.
+ * @param {string} dateStr
+ * @returns {string | null}
+ */
 function extractYear(dateStr) {
   if (!dateStr) return "";
   const match = String(dateStr).match(/\b(19|20)\d{2}\b/);
   return match ? match[0] : String(dateStr).trim();
 }
 
+/**
+ * Collect http(s) URLs from text or XML.
+ * @param {string} text
+ * @returns {string[]}
+ */
 function extractHttpUrls(itemBody, about) {
   const urls = [];
   if (/^https?:\/\//i.test(about || "")) {
@@ -239,6 +296,11 @@ function extractHttpUrls(itemBody, about) {
   return [...new Set(urls)];
 }
 
+/**
+ * Extract linked attachment IDs from RDF item XML.
+ * @param {string} xml
+ * @returns {string[]}
+ */
 function extractLinkedAttachmentIds(itemBody) {
   const ids = [];
   const re = /<link:link\b[^>]*\brdf:resource="([^"]+)"[^>]*\/?>/gi;
@@ -249,6 +311,11 @@ function extractLinkedAttachmentIds(itemBody) {
   return ids;
 }
 
+/**
+ * Resolve a local attachment filename for an RDF attachment id.
+ * @param {...unknown} args
+ * @returns {string | null}
+ */
 function attachmentFilename(attachmentBody) {
   // Prefer Zotero file path when present:
   // <z:path rdf:resource="files/5657/Some File.pdf"/>
@@ -282,6 +349,11 @@ function pdfMatchKey(filename) {
     : base;
 }
 
+/**
+ * Look up generated metadata attributes for a PDF basename.
+ * @param {...unknown} args
+ * @returns {object | null}
+ */
 function getMetadataForPdf(byFilename, pdfName) {
   if (byFilename.has(pdfName)) return byFilename.get(pdfName);
   const key = pdfMatchKey(pdfName);
@@ -292,6 +364,11 @@ function getMetadataForPdf(byFilename, pdfName) {
   return undefined;
 }
 
+/**
+ * True when a local PDF exists for the given RDF attachment name.
+ * @param {string} name
+ * @returns {boolean}
+ */
 function hasLocalPdfForRdfName(localSet, rdfName) {
   if (localSet.has(rdfName)) return true;
   const key = pdfMatchKey(rdfName);
@@ -302,6 +379,11 @@ function hasLocalPdfForRdfName(localSet, rdfName) {
   return false;
 }
 
+/**
+ * Build a human-readable display name for a policy document.
+ * @param {...unknown} args
+ * @returns {string}
+ */
 function buildDisplayName({ authors, year, title }) {
   const authorPart = formatAuthorList(authors);
   const yearPart = year ? `(${year})` : "";
@@ -319,6 +401,11 @@ function buildDisplayName({ authors, year, title }) {
   return titlePart || authorPart || "Untitled";
 }
 
+/**
+ * Build an index of metadata keyed by PDF/attachment name.
+ * @param {...unknown} args
+ * @returns {Map<string, object>}
+ */
 function buildMetadataIndex(rdfXml) {
   const blocks = parseTopLevelBlocks(rdfXml);
 
@@ -401,6 +488,10 @@ function buildMetadataIndex(rdfXml) {
   };
 }
 
+/**
+ * CLI entry point.
+ * @returns {Promise<void> | void}
+ */
 function main() {
   if (!fs.existsSync(RDF_PATH)) {
     console.error(`RDF file not found: ${RDF_PATH}`);

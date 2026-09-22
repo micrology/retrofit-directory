@@ -12,6 +12,10 @@
  *   node fetch-policy-page.js --url <url>
  *   node fetch-policy-page.js --dry-run <url>
  *   node fetch-policy-page.js --name custom-slug <url>
+ *
+ * @license MIT
+ * Copyright (c) 2025–2026 Nigel Gilbert and contributors
+ * University of Surrey — INHABIT / National Retrofit Hub
  */
 
 const { spawnSync } = require("child_process");
@@ -20,6 +24,11 @@ const path = require("path");
 
 const POLICIES_DIR = path.join(__dirname, "Policies");
 
+/**
+ * Parse CLI argv into an options object.
+ * @param {string[]} argv
+ * @returns {object}
+ */
 function parseArgs(argv) {
   const args = argv.slice(2);
   let dryRun = false;
@@ -152,12 +161,22 @@ function parseFrontMatter(markdown) {
   };
 }
 
+/**
+ * Extract a four-digit year from a date string, if present.
+ * @param {string} dateStr
+ * @returns {string | null}
+ */
 function extractYear(dateStr) {
   if (!dateStr) return "";
   const match = String(dateStr).match(/\b(19|20)\d{2}\b/);
   return match ? match[0] : "";
 }
 
+/**
+ * Slugify a string for safe filenames (lowercase, hyphenated).
+ * @param {string} value
+ * @returns {string}
+ */
 function slugify(value) {
   return String(value || "")
     .normalize("NFKD")
@@ -170,6 +189,11 @@ function slugify(value) {
     .slice(0, 120);
 }
 
+/**
+ * Derive a filesystem basename from a URL path.
+ * @param {string} url
+ * @returns {string}
+ */
 function basenameFromUrl(urlString) {
   try {
     const { pathname } = new URL(urlString);
@@ -187,6 +211,11 @@ function basenameFromUrl(urlString) {
   }
 }
 
+/**
+ * Strip common site-name suffixes from a page title.
+ * @param {string} title
+ * @returns {string}
+ */
 function stripTitleSuffix(title, sitename) {
   let cleaned = String(title || "").trim();
   if (!cleaned) return "";
@@ -201,6 +230,11 @@ function stripTitleSuffix(title, sitename) {
   return cleaned;
 }
 
+/**
+ * Build a human-readable display name for a policy document.
+ * @param {...unknown} args
+ * @returns {string}
+ */
 function buildDisplayName({ authors, year, title, sitename }) {
   const titlePart = title || "Untitled";
   const yearPart = year ? `(${year})` : "";
@@ -218,6 +252,11 @@ function buildDisplayName({ authors, year, title, sitename }) {
   return titlePart;
 }
 
+/**
+ * Build the output basename for a fetched policy page artifact.
+ * @param {...unknown} args
+ * @returns {string}
+ */
 function buildOutputBasename({ explicitName, title, url }) {
   if (explicitName) {
     const cleaned = explicitName
@@ -242,6 +281,11 @@ function buildOutputBasename({ explicitName, title, url }) {
   process.exit(1);
 }
 
+/**
+ * Invoke trafilatura to extract Markdown/text from a URL.
+ * @param {...unknown} args
+ * @returns {unknown}
+ */
 function runTrafilatura(url) {
   const result = spawnSync(
     "trafilatura",
@@ -284,6 +328,10 @@ function runTrafilatura(url) {
   return `${stdout}\n`;
 }
 
+/**
+ * CLI entry point.
+ * @returns {Promise<void> | void}
+ */
 function main() {
   const { dryRun, url, name } = parseArgs(process.argv);
 

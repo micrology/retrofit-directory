@@ -1,3 +1,22 @@
+/**
+ * Deterministic “near / nearest / within N miles” directory answers.
+ *
+ * Parses proximity intent from natural language, geocodes the place,
+ * ranks organisations by crow-flies distance from HQ coordinates in
+ * `orgs_llm`, and formats Markdown answers for the chat UI.
+ *
+ * Library module (not a CLI). Used by:
+ *   query.mjs              — intercepts proximity questions before text-to-SQL
+ *   test-proximity.mjs     — offline unit tests
+ *
+ * Depends on: geocode.mjs, directory.db with hq_latitude/hq_longitude populated.
+ * Default near radius: 25 miles (DEFAULT_NEAR_RADIUS_MILES).
+ *
+ * @license MIT
+ * Copyright (c) 2025–2026 Nigel Gilbert and contributors
+ * University of Surrey — INHABIT / National Retrofit Hub
+ */
+
 import sqlite3 from 'sqlite3'
 import { geocodePlace, haversineKm, kmToMiles, milesToKm, normalisePlaceKey } from './geocode.mjs'
 
@@ -249,12 +268,24 @@ function openDatabase(dbPath) {
   })
 }
 
+/**
+ * Promise wrapper around sqlite3 `db.all`.
+ * @param {import("sqlite3").Database} db
+ * @param {string} sql
+ * @param {unknown[]} [params]
+ * @returns {Promise<any[]>}
+ */
 function all(db, sql, params = []) {
   return new Promise((resolve, reject) => {
     db.all(sql, params, (err, rows) => (err ? reject(err) : resolve(rows)))
   })
 }
 
+/**
+ * Close a sqlite3 database connection.
+ * @param {import("sqlite3").Database} db
+ * @returns {Promise<void>}
+ */
 function close(db) {
   return new Promise((resolve, reject) => {
     db.close((err) => (err ? reject(err) : resolve()))
@@ -495,6 +526,11 @@ export function formatProximityAnswer(opts) {
   return [header, '', ...lines, '', caveat].join('\n')
 }
 
+/**
+ * Format a short location suffix for an organisation row (LA / postcode).
+ * @param {object} row
+ * @returns {string}
+ */
 function placeSuffix(row) {
   const bits = [row.local_authority, row.parish, row.postcode].filter(
     (v) => v && String(v).trim() && !/unparished/i.test(String(v))
@@ -509,6 +545,11 @@ function placeSuffix(row) {
   return ''
 }
 
+/**
+ * Human-readable distance in miles.
+ * @param {number} miles
+ * @returns {string}
+ */
 function formatMiles(miles) {
   const n = Number(miles)
   if (!Number.isFinite(n)) return 'an unknown distance'

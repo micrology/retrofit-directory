@@ -6,6 +6,10 @@
  *
  * Usage:
  *   node write-metadata.js
+ *
+ * @license MIT
+ * Copyright (c) 2025–2026 Nigel Gilbert and contributors
+ * University of Surrey — INHABIT / National Retrofit Hub
  */
 
 const fs = require("fs");
@@ -14,12 +18,22 @@ const readline = require("readline");
 
 const POLICIES_DIR = path.join(__dirname, "Policies");
 
+/**
+ * Prompt on a readline interface and resolve with the trimmed answer.
+ * @param {import("readline").Interface} rl
+ * @param {string} question
+ * @returns {Promise<string>}
+ */
 function ask(rl, question) {
   return new Promise((resolve) => {
     rl.question(question, (answer) => resolve(String(answer).trim()));
   });
 }
 
+/**
+ * CLI entry point.
+ * @returns {Promise<void> | void}
+ */
 async function main() {
   const rl = readline.createInterface({
     input: process.stdin,

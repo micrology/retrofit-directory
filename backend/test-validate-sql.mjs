@@ -1,19 +1,42 @@
 /**
- * Offline unit tests for SQL guardrails used by query.mjs.
- * Keep in sync with extractSqlFromLlmOutput / validateSql there.
+ * Offline unit tests for SQL guardrails (`validateSql` / extract helpers).
+ *
+ * Keep the local copies of strip/mask/extract/validate logic in sync with
+ * `query.mjs`. Invoked standalone or from `test-security.sh`.
+ *
+ * Usage:
+ *   cd backend
+ *   node test-validate-sql.mjs
+ *
+ * Exit code: number of failed cases (0 = all pass).
+ *
+ * @license MIT
+ * Copyright (c) 2025–2026 Nigel Gilbert and contributors
+ * University of Surrey — INHABIT / National Retrofit Hub
  */
+
 function stripSqlComments(sql) {
   return String(sql || '')
     .replace(/\/\*[\s\S]*?\*\//g, ' ')
     .replace(/--[^\n]*/g, ' ')
 }
 
+/**
+ * Replace SQL string literals with empty quotes so keyword checks ignore values.
+ * @param {string} sql
+ * @returns {string}
+ */
 function maskSqlStringLiterals(sql) {
   return String(sql || '')
     .replace(/'(?:''|[^'])*'/g, "''")
     .replace(/"(?:""|[^"])*"/g, '""')
 }
 
+/**
+ * Pull a SQL statement out of LLM output (fences, leading prose).
+ * @param {string} text
+ * @returns {string}
+ */
 function extractSqlFromLlmOutput(text) {
   let sql = String(text || '').trim()
   if (!sql) return ''
@@ -28,6 +51,11 @@ const FORBIDDEN_SQL_KEYWORD =
   /\b(?:ATTACH|DETACH|DROP|INSERT|UPDATE|DELETE|ALTER|CREATE|REINDEX|VACUUM|PRAGMA|ANALYZE|GRANT|REVOKE|TRUNCATE|MERGE|CALL|EXEC(?:UTE)?|LOAD_EXTENSION|INTO)\b/i
 const FORBIDDEN_SQL_REPLACE_STMT = /\bREPLACE\s+(?:OR\s+\w+\s+)?(?:INTO\b|\w+)/i
 
+/**
+ * Validate that SQL is a single read-only SELECT/WITH statement.
+ * @param {string} sql
+ * @returns {void}
+ */
 function validateSql(sql) {
   const original = String(sql || '')
   const withoutComments = stripSqlComments(original).trim()

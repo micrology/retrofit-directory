@@ -1,4 +1,14 @@
-# test script for retrofit directory Queries
+#!/usr/bin/env bash
+# Manual smoke curls against /api/query (local + optional remote).
+#
+# Not a pass/fail suite — prints raw HTTP bodies for eyeballing. Prefer
+# test-security.sh for automated regressions and test-proximity.mjs /
+# test-validate-sql.mjs for offline unit checks.
+#
+# Usage:
+#   ./testQueries.sh
+#
+# Prerequisites: query server running on localhost:5001 (or edit LOCAL/REMOTE).
 #
 # The /api/query endpoint expects the same envelope the website sends
 # (see website/js/app.mjs):

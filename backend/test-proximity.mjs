@@ -1,6 +1,21 @@
 /**
- * Offline unit tests for geocode.mjs + proximity.mjs (no Bedrock).
+ * Offline unit tests for `geocode.mjs` and `proximity.mjs` (no Bedrock).
+ *
+ * Covers intent parsing, seed gazetteer geocoding, haversine distances,
+ * near/nearest answers against directory.db, and “near me” location prompts.
+ * Requires a local `directory.db` with HQ coordinates for the DB cases.
+ *
+ * Usage:
+ *   cd backend
+ *   node test-proximity.mjs
+ *
+ * Exit code: number of failed assertions (0 = all pass).
+ *
+ * @license MIT
+ * Copyright (c) 2025–2026 Nigel Gilbert and contributors
+ * University of Surrey — INHABIT / National Retrofit Hub
  */
+
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { geocodePlace, haversineKm, kmToMiles, normalisePlaceKey } from './geocode.mjs'
@@ -16,6 +31,12 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const DB_PATH = path.join(__dirname, 'directory.db')
 
 let fail = 0
+/**
+ * Assert a named condition; prints PASS/FAIL and tallies failures.
+ * @param {string} label
+ * @param {unknown} cond
+ * @returns {void}
+ */
 function check(label, cond) {
   if (cond) process.stdout.write(`PASS ${label}\n`)
   else {

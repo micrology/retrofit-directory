@@ -1,12 +1,13 @@
 /**
  * Admin dashboard for the Retrofit Directory query service.
  *
- * Fetches the usage summary from POST /api/observe (Bearer token) and renders
- * it as formatted tables inside #admin-content. Also owns the unlock UI.
+ * Unlocks with a bearer token (stored in sessionStorage), loads usage
+ * summaries from `/api/observe`, and renders totals, charts, and a
+ * recent-request transcript.
  *
- * All cell content is written with textContent rather than innerHTML: the
- * recent-query rows contain user-submitted text and must never be parsed as
- * markup.
+ * @license MIT
+ * Copyright (c) 2025–2026 Nigel Gilbert and contributors
+ * University of Surrey — INHABIT / National Retrofit Hub
  */
 
 const RECENT_LIMIT = 100
@@ -220,6 +221,11 @@ function toggleRowExpansion(row) {
 
 /** @param {HTMLElement} table @returns {void} */
 function markOverflowingCells(table) {
+  /**
+   * Measure rendered width/overflow for an admin table cell.
+   * @param {HTMLElement} el
+   * @returns {object}
+   */
   const measure = () => {
     for (const node of table.querySelectorAll('.admin-clamp')) {
       if (node.scrollHeight - node.clientHeight > 2) node.classList.add('is-truncated')

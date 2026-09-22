@@ -1,3 +1,22 @@
+/**
+ * Usage and observability store for the retrofit query service.
+ *
+ * Kept in its own SQLite file (`usage.db`) rather than `directory.db` so
+ * user questions never leak into text-to-SQL schema prompts, and so the
+ * directory DB can stay open read-only. Public APIs swallow errors so
+ * observability never breaks user requests.
+ *
+ * Library module (not a CLI). Used by:
+ *   query.mjs              — withUsageCapture / saveRequestLog / token budget
+ *   website/js/admin.mjs   — via POST /api/observe → getUsageSummary()
+ *
+ * Database: backend/usage.db (created on first init; WAL mode).
+ *
+ * @license MIT
+ * Copyright (c) 2025–2026 Nigel Gilbert and contributors
+ * University of Surrey — INHABIT / National Retrofit Hub
+ */
+
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { AsyncLocalStorage } from 'node:async_hooks'

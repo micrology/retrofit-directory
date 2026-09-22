@@ -397,3 +397,238 @@ request shape, hardened `validateSql` cases, and rate limits on both
 `/api/query` and `/api/observe`. Note: the query rate-limiting section sleeps
 61 seconds to guarantee a clean window; total runtime is approximately two
 minutes including two Bedrock calls.
+
+---
+
+## Repository layout
+
+| Path | Role |
+| --- | --- |
+| `website/` | Static public site (HTML/CSS) and browser modules under `website/js/` |
+| `website/js/app.mjs` | Chat UI: suggestions, multi-turn history, Markdown rendering |
+| `website/js/admin.mjs` | Admin usage dashboard (bearer token → `/api/observe`) |
+| `website/js/mobilenav.mjs` | Mobile header navigation toggle |
+| `backend/query.mjs` | Express query server (directory / policy / proximity routing) |
+| `backend/csvToDB.mjs` | Qualtrics CSV/XLSX → `directory.db` + `directory.schema` |
+| `backend/geoPostcodes.mjs` | ONSPD postcode enrichment at import time |
+| `backend/geocode.mjs` | Place → WGS84 for proximity search |
+| `backend/proximity.mjs` | Near / nearest intent parsing and ranked answers |
+| `backend/usage.mjs` | Request/token logging in `usage.db` |
+| `backend/verifyImport.mjs` | Post-import integrity checks |
+| `backend/fetch-policy-page.js` | Fetch policy webpages for the KB corpus |
+| `backend/generate-policy-metadata.js` | Bedrock KB metadata sidecars from Zotero RDF |
+| `backend/list-document-metadata.js` | List/download KB metadata from S3 |
+| `backend/write-metadata.js` | Interactive webpage metadata sidecar writer |
+| `backend/test-*.mjs` | Offline unit tests (SQL guardrails, proximity) |
+| `backend/test-security.sh` | Live HTTP security regression script |
+| `LICENSE` | MIT license text |
+
+JavaScript modules carry a file-level overview (purpose, outputs, and
+usage where the file is a CLI), an MIT copyright notice, and JSDoc on
+functions. Prefer those comments over reverse-engineering call sites when
+extending behaviour. CLI entry points also print `--help` where applicable;
+keep the file header and README examples in sync when flags change.
+
+---
+
+## Policy corpus tooling
+
+These scripts prepare documents and Bedrock Knowledge Base sidecar metadata
+under `backend/Policies/`. Run them from `backend/` (or pass paths that
+resolve correctly from your cwd). Sidecars follow Bedrock’s
+`<document>.metadata.json` convention so attributes such as `display_name`,
+`title`, `year`, `url`, and `doc_type` travel with each uploaded object.
+
+### Fetch a public webpage (`fetch-policy-page.js`)
+
+Uses [trafilatura](https://github.com/adbar/trafilatura) to extract Markdown
+and metadata, then writes:
+
+- `./Policies/<name>.md`
+- `./Policies/<name>.md.metadata.json`
+
+```bash
+cd backend
+node fetch-policy-page.js <url>
+node fetch-policy-page.js --url <url>
+node fetch-policy-page.js --dry-run <url>
+node fetch-policy-page.js --name custom-slug <url>
+node fetch-policy-page.js --help
+```
+
+### Interactive webpage metadata (`write-metadata.js`)
+
+Prompts for display name, year, title, URL, and file name, then writes:
+
+- `./Policies/<file name>.pdf.metadata.json`
+
+```bash
+cd backend
+node write-metadata.js
+```
+
+### Zotero RDF → PDF sidecars (`generate-policy-metadata.js`)
+
+Reads a Zotero RDF/XML export (default `Policy documents_v3.rdf`) and writes
+sidecars for PDFs already present in `./Policies/`:
+
+- `./Policies/<pdf-filename>.metadata.json`
+
+```bash
+cd backend
+node generate-policy-metadata.js
+node generate-policy-metadata.js --dry-run
+node generate-policy-metadata.js [rdf-path]
+node generate-policy-metadata.js --rdf <path>
+node generate-policy-metadata.js --rdf=<path>
+node generate-policy-metadata.js --help
+```
+
+### S3 metadata index (`list-document-metadata.js`)
+
+Downloads Bedrock KB sidecar objects from S3 (via the AWS CLI) and writes a
+sorted index. Each output line is:
+
+```text
+[display_name] [url]
+```
+
+```bash
+cd backend
+node list-document-metadata.js
+node list-document-metadata.js --out ./document-index.txt
+node list-document-metadata.js --bucket retrofit-directory-documents --region eu-west-2
+node list-document-metadata.js --help
+```
+
+Requires AWS credentials with read access to the documents bucket. Defaults
+for bucket/region/prefix are defined in the script header and `--help` text.
+
+---
+
+## Directory import and ops CLIs
+
+Narrative setup lives under [Backend setup](#backend-setup). This section is a
+compact command reference; each script also documents itself in its file header.
+
+### Import Qualtrics export (`csvToDB.mjs`)
+
+```bash
+cd backend
+node csvToDB.mjs
+node csvToDB.mjs path/to/qualtrics-export.xlsx
+node csvToDB.mjs path/to/qualtrics-export.csv
+```
+
+**Outputs:** `directory.db` (table `orgs`, view `orgs_llm`) and
+`directory.schema`. Default input is `../directory.csv`. With
+`backend/geo/ONSPD_*.zip` present, HQ postcodes gain `local_authority`,
+`parish`, `hq_latitude`, and `hq_longitude`.
+
+### Verify import (`verifyImport.mjs`)
+
+```bash
+cd backend
+node verifyImport.mjs
+node verifyImport.mjs path/to/qualtrics-export.xlsx
+node verifyImport.mjs [inputPath] [dbPath] [schemaPath]
+```
+
+Compares the source spreadsheet to `directory.db` / `directory.schema` and
+checks enrichment and `orgs_llm` aliases. Prints `OK` / `NOTE` / `ISSUE` lines;
+exits non-zero on failure.
+
+### Weekly refresh wrapper (`refresh-directory.sh`)
+
+```bash
+cd backend
+./refresh-directory.sh path/to/export.xlsx
+./refresh-directory.sh path/to/export.xlsx --deploy
+./refresh-directory.sh path/to/export.xlsx --deploy --min-match-rate 0.90
+./refresh-directory.sh -h
+```
+
+Runs import → postcode→LA match-rate gate (default **0.95**) → verify →
+optional deploy. Environment: `MIN_MATCH_RATE`, `SKIP_ONSPD_CHECK=1`.
+
+### Deploy database only (`deploy-directory-db.sh`)
+
+```bash
+cd backend
+./deploy-directory-db.sh
+```
+
+`scp`s `./directory.db` to `AWS-CRESS:/data/retrofit-directory/backend/directory.db`.
+Requires the SSH host alias and a local `directory.db`. Restart
+`retrofit-query-server` on the host if needed after replace.
+
+### Query server (`query.mjs`)
+
+```bash
+cd backend
+VERBOSE=1 ADMIN_PASSWORD=secret node query.mjs
+# production: systemd unit backend/retrofit-query-server.service
+```
+
+**Endpoints:** `POST /api/query`, `POST /api/observe` (Bearer `ADMIN_PASSWORD`).
+**Environment:** `PORT` (default 5001), `ADMIN_PASSWORD`, `DAILY_TOKEN_BUDGET`,
+`VERBOSE`. Needs `directory.db`, `directory.schema`, and Bedrock credentials.
+
+### Supporting libraries (not CLIs)
+
+| Module | Role | Used by |
+| --- | --- | --- |
+| `geoPostcodes.mjs` | ONSPD postcode → LA/parish/coords | `csvToDB.mjs` |
+| `geocode.mjs` | Place name → WGS84 | `proximity.mjs`, tests |
+| `proximity.mjs` | Near/nearest answers | `query.mjs`, tests |
+| `usage.mjs` | `usage.db` request/token log | `query.mjs`, admin UI |
+
+---
+
+## Tests and smoke scripts
+
+### Offline unit tests
+
+```bash
+cd backend
+node test-validate-sql.mjs   # SQL guardrails (no network)
+node test-proximity.mjs      # geocode + proximity (needs directory.db with HQ coords)
+```
+
+Exit code is the failure count (`0` = all pass).
+
+### Security regression suite (`test-security.sh`)
+
+```bash
+cd backend
+./test-security.sh
+./test-security.sh http://localhost:5001/api/query
+./test-security.sh https://retrofit-directory.org.uk/retrofit
+```
+
+Automated checks for bind address, validation, body limit, `validateSql`,
+prompt-injection smoke, response shape, and rate limits. ~2 minutes (includes
+a 61s sleep and live Bedrock calls). Exit non-zero on any failure.
+
+### Manual query smoke curls (`testQueries.sh`)
+
+```bash
+cd backend
+./testQueries.sh
+```
+
+Prints raw responses for sample local/remote queries and malformed bodies.
+Not a pass/fail harness — use for quick eyeballing while developing.
+
+---
+
+## License
+
+This project is released under the [MIT License](LICENSE).
+
+Copyright (c) 2025–2026 Nigel Gilbert and contributors,
+University of Surrey — INHABIT / National Retrofit Hub.
+
+Third-party data used at build time (for example the ONS Postcode Directory)
+remains under its own terms (typically the Open Government Licence) and is not
+redistributed in this repository.

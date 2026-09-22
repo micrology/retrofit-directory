@@ -1,3 +1,33 @@
+/**
+ * Import a Qualtrics CSV/XLSX survey export into SQLite (`directory.db`),
+ * enrich HQ postcodes via ONSPD when available, create the LLM-facing
+ * `orgs_llm` view, and write `directory.schema` for text-to-SQL prompts.
+ *
+ * Outputs (written under this directory when run from `backend/`):
+ *   directory.db       — organisations table + orgs_llm view
+ *   directory.schema   — human-readable schema for text-to-SQL prompts
+ *
+ * Usage:
+ *   cd backend
+ *   node csvToDB.mjs
+ *   node csvToDB.mjs path/to/qualtrics-export.xlsx
+ *   node csvToDB.mjs path/to/qualtrics-export.csv
+ *
+ * Defaults:
+ *   input  = ../directory.csv
+ *   db     = ./directory.db
+ *   schema = ./directory.schema
+ *
+ * ONSPD: if backend/geo/ONSPD_*.zip (or an extracted ONSPD folder) is present,
+ * HQ postcodes are enriched with local_authority, parish, hq_latitude,
+ * hq_longitude. Prefer backend/refresh-directory.sh for weekly imports
+ * (import + match-rate gate + verify + optional deploy).
+ *
+ * @license MIT
+ * Copyright (c) 2025–2026 Nigel Gilbert and contributors
+ * University of Surrey — INHABIT / National Retrofit Hub
+ */
+
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -10,10 +40,6 @@ import {
   enrichPostcodesFromOnspd,
   findOnspdSource,
 } from './geoPostcodes.mjs'
-/**
- * Import the source CSV into a local SQLite database and emit a plain-text
- * schema snapshot used by the query service.
- */
 
 const INPUT_PATH = process.argv[2] || '../directory.csv'
 const DB_PATH = 'directory.db'
@@ -113,7 +139,6 @@ function normalizeForMatch(value) {
  * @param {unknown} identifier
  * @returns {string}
  */
-
 function quoteIdentifier(identifier) {
   return `"${String(identifier).replace(/"/g, '""')}"`
 }
@@ -124,7 +149,6 @@ function quoteIdentifier(identifier) {
  * @param {unknown[]} [params=[]]
  * @returns {Promise<void>}
  */
-
 function run(db, sql, params = []) {
   return new Promise((resolve, reject) => {
     db.run(sql, params, (err) => {
@@ -395,6 +419,12 @@ function findColumnByTokens(columns, requiredTokens) {
  */
 function buildLlmViewMappings(columns) {
   const mappings = []
+  /**
+   * Register an alias if a source column matching `tokens` exists.
+   * @param {string} alias
+   * @param {string[]} tokens
+   * @returns {void}
+   */
   const addMapping = (alias, tokens) => {
     const source = findColumnByTokens(columns, tokens)
     if (source) mappings.push({ alias, source })
@@ -434,7 +464,6 @@ function buildLlmViewMappings(columns) {
  * Parse CSV data, recreate the SQLite table, insert rows and write schema.
  * @returns {Promise<void>}
  */
-
 async function main() {
   const { rows, format } = loadRowsFromInput(INPUT_PATH)
 

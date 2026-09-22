@@ -1,8 +1,18 @@
 #!/usr/bin/env bash
-# Security regression tests for retrofit-query-server
-# Usage: ./test-security.sh [query_base_url]
+# Security regression tests for retrofit-query-server.
+#
+# Covers: loopback bind, input validation, body size limit, validateSql unit
+# tests, prompt-injection smoke, response shape (no sqlQuery/rawResults leak),
+# and rate limits on /api/query and /api/observe.
+#
+# Usage:
+#   ./test-security.sh
+#   ./test-security.sh http://localhost:5001/api/query
+#   ./test-security.sh https://retrofit-directory.org.uk/retrofit
+#
 # Default base URL targets the local Node.js service directly (bypasses Apache).
-# To test through Apache: ./test-security.sh https://retrofit-directory.org.uk/retrofit
+# Runtime is ~2 minutes (includes a 61s sleep for a clean rate-limit window and
+# a couple of live Bedrock calls). Exit non-zero if any check fails.
 #
 # The query endpoint expects:
 #   POST { "messages": [ { "role": "user", "content": [ { "query": "..." } ] } ] }

@@ -1,3 +1,23 @@
+/**
+ * Resolve UK postcodes to local authority / parish / coordinates using a
+ * local ONS Postcode Directory (ONSPD) zip or extracted folder under
+ * `backend/geo/`.
+ *
+ * Designed for weekly directory rebuilds: looks up whatever postcodes
+ * appear in the current survey export. Does not ship ONSPD to production —
+ * enrichment is written into `directory.db` at import time only.
+ *
+ * Library module (not a CLI). Used by:
+ *   csvToDB.mjs            — HQ place enrichment during import
+ *
+ * ONSPD source: place `ONSPD_*.zip` (or an extracted folder) under backend/geo/.
+ * See backend/geo/README.md if present. Free under the Open Government Licence.
+ *
+ * @license MIT
+ * Copyright (c) 2025–2026 Nigel Gilbert and contributors
+ * University of Surrey — INHABIT / National Retrofit Hub
+ */
+
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -427,6 +447,11 @@ export async function applyPostcodeEnrichment(db, tableName, postcodeColumn, byC
   return updated
 }
 
+/**
+ * Safely quote a SQLite identifier (table/column name).
+ * @param {unknown} identifier
+ * @returns {string}
+ */
 function quoteIdent(identifier) {
   return `"${String(identifier).replace(/"/g, '""')}"`
 }

@@ -1,5 +1,13 @@
 /**
- * Retrofit Directory client-side application logic
+ * Retrofit Directory public chat client.
+ *
+ * Suggestion chips, multi-turn history, Markdown rendering (marked +
+ * DOMPurify), source citations, clipboard/new-chat controls, and the
+ * privacy consent dialog.
+ *
+ * @license MIT
+ * Copyright (c) 2025–2026 Nigel Gilbert and contributors
+ * University of Surrey — INHABIT / National Retrofit Hub
  */
 
 import { marked } from 'https://cdn.jsdelivr.net/npm/marked@18.0.7/+esm'
@@ -13,6 +21,13 @@ const SUGGESTION_PROMPTS = [
   'What is PAS2035?',
 ]
 
+/**
+ * Show a short toast via the Oat UI helper when available.
+ * @param {string} message
+ * @param {string} [variant="success"]
+ * @param {object} [options]
+ * @returns {void}
+ */
 function showToast(message, variant = 'success', options = {}) {
   if (!window.ot || typeof window.ot.toast !== 'function') return
 
@@ -70,6 +85,10 @@ function initChat() {
     }
   }
 
+  /**
+   * Render the empty-state suggestion chips into the chat transcript.
+   * @returns {void}
+   */
   function renderSuggestions() {
     messagesDiv.replaceChildren()
 

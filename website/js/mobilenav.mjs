@@ -1,5 +1,11 @@
 /**
- * Mobile navigation toggle
+ * Mobile navigation toggle for the public site header.
+ *
+ * Handles open/close, Escape, outside click, and link navigation.
+ *
+ * @license MIT
+ * Copyright (c) 2025–2026 Nigel Gilbert and contributors
+ * University of Surrey — INHABIT / National Retrofit Hub
  */
 function initMobileNav() {
   const toggleBtn = document.getElementById('mobileNavToggle')
@@ -8,6 +14,11 @@ function initMobileNav() {
 
   if (!toggleBtn || !navMenu) return
 
+  /**
+   * Open or close the mobile navigation menu and sync ARIA state.
+   * @param {boolean} open
+   * @returns {void}
+   */
   const setOpen = (open) => {
     navMenu.classList.toggle('open', open)
     toggleBtn.setAttribute('aria-expanded', open ? 'true' : 'false')

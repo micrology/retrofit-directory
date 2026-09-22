@@ -1,16 +1,25 @@
 #!/usr/bin/env bash
 # Rebuild directory.db from a Qualtrics export, verify integrity, optionally deploy.
 #
-# Usage:
+# Steps: csvToDB.mjs → postcode→LA match-rate gate → verifyImport.mjs →
+# optional deploy-directory-db.sh.
+#
+# Usage (from backend/):
 #   ./refresh-directory.sh path/to/export.xlsx
 #   ./refresh-directory.sh path/to/export.xlsx --deploy
 #   ./refresh-directory.sh path/to/export.xlsx --deploy --min-match-rate 0.90
+#   ./refresh-directory.sh -h
+#
+# Outputs:
+#   ./directory.db
+#   ./directory.schema
 #
 # Environment:
 #   MIN_MATCH_RATE   Minimum fraction of non-blank HQ postcodes that must resolve
 #                    to a local_authority (default: 0.95). Overridden by --min-match-rate.
 #   SKIP_ONSPD_CHECK Set to 1 to allow import when ONSPD is missing (not recommended).
 #
+# Requires backend/geo/ONSPD_*.zip unless SKIP_ONSPD_CHECK=1.
 # Exits non-zero if import, verify, match-rate gate, or deploy fails.
 set -euo pipefail
 
@@ -18,7 +27,9 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$ROOT"
 
 usage() {
-  sed -n '2,16p' "$0" | sed 's/^# \{0,1\}//'
+  # Print the leading comment block (everything before set -euo pipefail).
+  # Use absolute path: $0 may be relative and invalid after cd "$ROOT".
+  sed -n '2,/^set -euo pipefail$/p' "$ROOT/$(basename "${BASH_SOURCE[0]}")" | sed '$d' | sed 's/^# \{0,1\}//'
   exit 2
 }
 

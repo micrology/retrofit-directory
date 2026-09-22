@@ -1,21 +1,32 @@
-import fs from "node:fs";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
-import sqlite3 from "sqlite3";
-import XLSX from "xlsx";
-
 /**
- * Verify directory.db / directory.schema against a source CSV or XLSX file
- * using the same import rules as csvToDB.mjs.
+ * Integrity checks after a Qualtrics → SQLite import.
+ *
+ * Compares source spreadsheet rows/columns against `directory.db` using the
+ * same import rules as csvToDB.mjs, validates ONSPD enrichment coverage,
+ * `orgs_llm` aliases, and `directory.schema`. Prints OK / NOTE / ISSUE lines.
+ * Exit non-zero when checks fail (used by `refresh-directory.sh`).
  *
  * Usage:
+ *   cd backend
+ *   node verifyImport.mjs
+ *   node verifyImport.mjs path/to/qualtrics-export.xlsx
  *   node verifyImport.mjs [inputPath] [dbPath] [schemaPath]
  *
  * Defaults:
  *   inputPath  = ../directory.csv
  *   dbPath     = ./directory.db
  *   schemaPath = ./directory.schema
+ *
+ * @license MIT
+ * Copyright (c) 2025–2026 Nigel Gilbert and contributors
+ * University of Surrey — INHABIT / National Retrofit Hub
  */
+
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import sqlite3 from "sqlite3";
+import XLSX from "xlsx";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const INPUT_PATH = process.argv[2] || path.join(__dirname, "../directory.csv");
@@ -56,21 +67,41 @@ const issues = [];
 const notes = [];
 const oks = [];
 
+/**
+ * Record a failing check and print an error line.
+ * @param {string} msg
+ * @returns {void}
+ */
 function issue(msg) {
   issues.push(msg);
   console.log(`ISSUE: ${msg}`);
 }
 
+/**
+ * Print an informational note during verification.
+ * @param {string} msg
+ * @returns {void}
+ */
 function note(msg) {
   notes.push(msg);
   console.log(`NOTE: ${msg}`);
 }
 
+/**
+ * Print a passing check line.
+ * @param {string} msg
+ * @returns {void}
+ */
 function ok(msg) {
   oks.push(msg);
   console.log(`OK: ${msg}`);
 }
 
+/**
+ * Normalise free text: newlines to spaces, collapse whitespace, trim.
+ * @param {unknown} value
+ * @returns {string}
+ */
 function normalizeWhitespace(value) {
   return String(value)
     .replace(/[\r\n]+/g, " ")
@@ -78,10 +109,20 @@ function normalizeWhitespace(value) {
     .trim();
 }
 
+/**
+ * Normalise a CSV header label into a deterministic SQL column identifier.
+ * @param {unknown} columnName
+ * @returns {string}
+ */
 function cleanColumnName(columnName) {
   return normalizeWhitespace(columnName).toLowerCase().replace(/ /g, "_");
 }
 
+/**
+ * True when a cell has no usable content for import.
+ * @param {unknown} value
+ * @returns {boolean}
+ */
 function isEmptyCell(value) {
   return (
     value === undefined ||
@@ -91,10 +132,21 @@ function isEmptyCell(value) {
   );
 }
 
+/**
+ * True when every data-row value in a column is empty.
+ * @param {unknown[][]} dataRows
+ * @param {number} colIdx
+ * @returns {boolean}
+ */
 function isColumnEmpty(dataRows, colIdx) {
   return dataRows.every((row) => isEmptyCell(row[colIdx]));
 }
 
+/**
+ * Coerce a cell to the value stored in SQLite (dates → strings; empty → null).
+ * @param {unknown} value
+ * @returns {unknown}
+ */
 function normalizeCellValue(value) {
   if (isEmptyCell(value)) return null;
   if (value instanceof Date) {
@@ -107,10 +159,20 @@ function normalizeCellValue(value) {
   return value;
 }
 
+/**
+ * Safely quote a SQLite identifier (table/column name).
+ * @param {unknown} identifier
+ * @returns {string}
+ */
 function quoteIdentifier(identifier) {
   return `"${String(identifier).replace(/"/g, '""')}"`;
 }
 
+/**
+ * Convert an Excel serial date number into a JS Date (UTC), if possible.
+ * @param {number} serial
+ * @returns {Date | null}
+ */
 function excelSerialToDate(serial) {
   const parts = XLSX.SSF.parse_date_code(serial);
   if (!parts) return null;
@@ -118,6 +180,11 @@ function excelSerialToDate(serial) {
   return new Date(Date.UTC(parts.y, parts.m - 1, parts.d, parts.H || 0, parts.M || 0, seconds));
 }
 
+/**
+ * For date columns in XLSX data, coerce serial/date-like values to Date objects.
+ * @param {unknown[][]} rows
+ * @returns {unknown[][]}
+ */
 function normalizeExcelDateColumns(rows) {
   const dateColumns = new Set();
   for (const row of rows) {
@@ -141,6 +208,12 @@ function normalizeExcelDateColumns(rows) {
   );
 }
 
+/**
+ * Run `fn` while suppressing known non-fatal SheetJS ZIP size warnings.
+ * @template T
+ * @param {() => T} fn
+ * @returns {T}
+ */
 function withSuppressedXlsxZipSizeWarnings(fn) {
   const originalConsoleError = console.error;
   const warningPattern = /^Bad (compressed|uncompressed) size: \d+ != 0$/;
@@ -158,6 +231,11 @@ function withSuppressedXlsxZipSizeWarnings(fn) {
   }
 }
 
+/**
+ * Load tabular rows from a CSV or XLSX path.
+ * @param {string} inputPath
+ * @returns {{ rows: unknown[][], format: "csv" | "xlsx" }}
+ */
 async function loadRowsFromInput(inputPath) {
   const ext = path.extname(inputPath).toLowerCase();
 
@@ -195,6 +273,12 @@ async function loadRowsFromInput(inputPath) {
   throw new Error(`Unsupported input file extension: ${ext || "(none)"} (expected .csv or .xlsx).`);
 }
 
+/**
+ * Compare two cell values after normalising empty/whitespace cases.
+ * @param {unknown} a
+ * @param {unknown} b
+ * @returns {boolean}
+ */
 function valuesEqual(expected, actual) {
   if (expected === null || expected === undefined) {
     return actual === null || actual === undefined || actual === "";
@@ -210,24 +294,48 @@ function valuesEqual(expected, actual) {
   return String(expected) === String(actual);
 }
 
+/**
+ * Promise wrapper around sqlite3 `db.all`.
+ * @param {import("sqlite3").Database} db
+ * @param {string} sql
+ * @param {unknown[]} [params]
+ * @returns {Promise<any[]>}
+ */
 function all(db, sql, params = []) {
   return new Promise((resolve, reject) => {
     db.all(sql, params, (err, rows) => (err ? reject(err) : resolve(rows)));
   });
 }
 
+/**
+ * Promise wrapper around sqlite3 `db.get`.
+ * @param {import("sqlite3").Database} db
+ * @param {string} sql
+ * @param {unknown[]} [params]
+ * @returns {Promise<any>}
+ */
 function get(db, sql, params = []) {
   return new Promise((resolve, reject) => {
     db.get(sql, params, (err, row) => (err ? reject(err) : resolve(row)));
   });
 }
 
+/**
+ * Close a sqlite3 database connection.
+ * @param {import("sqlite3").Database} db
+ * @returns {Promise<void>}
+ */
 function close(db) {
   return new Promise((resolve, reject) => {
     db.close((err) => (err ? reject(err) : resolve()));
   });
 }
 
+/**
+ * Normalise text for fuzzy semantic token matching.
+ * @param {string} value
+ * @returns {string}
+ */
 function normalizeForMatch(value) {
   return String(value)
     .toLowerCase()
@@ -237,6 +345,12 @@ function normalizeForMatch(value) {
     .trim();
 }
 
+/**
+ * Find the first column whose normalised name contains all required tokens.
+ * @param {string[]} columns
+ * @param {string[]} requiredTokens
+ * @returns {string | null}
+ */
 function findColumnByTokens(columns, requiredTokens) {
   for (const column of columns) {
     const normalized = normalizeForMatch(column);
@@ -245,8 +359,19 @@ function findColumnByTokens(columns, requiredTokens) {
   return null;
 }
 
+/**
+ * Build canonical alias mappings for the LLM-facing SQL view.
+ * @param {string[]} columns
+ * @returns {Array<{ alias: string, source: string }>}
+ */
 function buildLlmViewMappings(columns) {
   const mappings = [];
+  /**
+   * Register an alias if a source column matching `tokens` exists.
+   * @param {string} alias
+   * @param {string[]} tokens
+   * @returns {void}
+   */
   const addMapping = (alias, tokens) => {
     const source = findColumnByTokens(columns, tokens);
     if (source) mappings.push({ alias, source });
@@ -275,6 +400,12 @@ function buildLlmViewMappings(columns) {
   return mappings;
 }
 
+/**
+ * Parse column names for a table/view from `directory.schema` text.
+ * @param {string} schemaText
+ * @param {string} tableName
+ * @returns {string[]}
+ */
 function parseSchemaTableColumns(schemaText, tableHeader) {
   const idx = schemaText.indexOf(tableHeader);
   if (idx < 0) return null;
@@ -301,6 +432,10 @@ function parseSchemaTableColumns(schemaText, tableHeader) {
   return cols;
 }
 
+/**
+ * CLI entry point.
+ * @returns {Promise<void> | void}
+ */
 async function main() {
   console.log(`Input:  ${INPUT_PATH}`);
   console.log(`DB:     ${DB_PATH}`);
@@ -526,6 +661,11 @@ async function main() {
       }
 
       const tableNamesSorted = [...dbNames].map(String).sort();
+      /**
+       * Collect view names from sqlite_master for verification.
+       * @param {import("sqlite3").Database} db
+       * @returns {Promise<string[]>}
+       */
       const viewNames = (await all(db, `SELECT org_name FROM ${quoteIdentifier(LLM_VIEW_NAME)}`)).map((r) =>
         String(r.org_name)
       );

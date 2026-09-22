@@ -69,3 +69,6 @@ backend/geo/
 !backend/geo/README.md
 # Runtime geocode cache (postcodes.io results)
 backend/geo/geocode-cache.json
+
+# Notes
+notes/

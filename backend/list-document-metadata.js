@@ -9,6 +9,10 @@
  *   node list-document-metadata.js
  *   node list-document-metadata.js --out ./document-index.txt
  *   node list-document-metadata.js --bucket retrofit-directory-documents --region eu-west-2
+ *
+ * @license MIT
+ * Copyright (c) 2025–2026 Nigel Gilbert and contributors
+ * University of Surrey — INHABIT / National Retrofit Hub
  */
 
 const { spawnSync } = require("child_process");
@@ -19,6 +23,11 @@ const DEFAULT_BUCKET = "retrofit-directory-documents";
 const DEFAULT_REGION = "eu-west-2";
 const DEFAULT_OUT = path.join(__dirname, "document-index.txt");
 
+/**
+ * Parse CLI argv into an options object.
+ * @param {string[]} argv
+ * @returns {object}
+ */
 function parseArgs(argv) {
   const args = argv.slice(2);
   let bucket = DEFAULT_BUCKET;
@@ -77,6 +86,12 @@ Options:
   return { bucket, region, out: path.resolve(out) };
 }
 
+/**
+ * Require a non-empty option value or throw a usage error.
+ * @param {string} name
+ * @param {unknown} value
+ * @returns {string}
+ */
 function requireValue(args, index, flag) {
   const value = args[index];
   if (!value || value.startsWith("-")) {
@@ -86,6 +101,11 @@ function requireValue(args, index, flag) {
   return value;
 }
 
+/**
+ * Run an AWS CLI command and return stdout as text.
+ * @param {string[]} args
+ * @returns {string}
+ */
 function runAws(args, { encoding = "utf8", maxBuffer = 50 * 1024 * 1024 } = {}) {
   const result = spawnSync("aws", args, {
     encoding,
@@ -114,6 +134,11 @@ function runAws(args, { encoding = "utf8", maxBuffer = 50 * 1024 * 1024 } = {}) 
   return result.stdout;
 }
 
+/**
+ * List `.metadata.json` object keys under the configured S3 prefix.
+ * @param {object} options
+ * @returns {string[]}
+ */
 function listSidecarKeys(bucket, region) {
   const keys = [];
   let continuationToken = null;
@@ -159,6 +184,12 @@ function listSidecarKeys(bucket, region) {
   return keys;
 }
 
+/**
+ * Download one metadata sidecar from S3 to a local path.
+ * @param {string} key
+ * @param {string} destPath
+ * @returns {void}
+ */
 function downloadSidecar(bucket, region, key) {
   const stdout = runAws([
     "s3",
@@ -176,6 +207,11 @@ function downloadSidecar(bucket, region, key) {
   }
 }
 
+/**
+ * Format one metadata entry for console output.
+ * @param {object} entry
+ * @returns {string}
+ */
 function formatEntry(attrs) {
   const displayName = String(attrs.display_name || "").trim();
   const url = String(attrs.url || "").trim();
@@ -183,6 +219,10 @@ function formatEntry(attrs) {
   return `${displayName} ${url}`;
 }
 
+/**
+ * CLI entry point.
+ * @returns {Promise<void> | void}
+ */
 function main() {
   const { bucket, region, out } = parseArgs(process.argv);
 

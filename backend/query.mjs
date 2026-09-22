@@ -1,3 +1,36 @@
+/**
+ * HTTP query server for the Retrofit Directory.
+ *
+ * Express app bound to 127.0.0.1 (default port 5001). Routes each question to
+ * directory (text-to-SQL + SQLite), policy (Bedrock Knowledge Base), proximity
+ * search, or out-of-scope. Enforces input limits, SQL guardrails, rate limits,
+ * admin auth for `/api/observe`, and usage logging to `usage.db`.
+ *
+ * Endpoints:
+ *   POST /api/query    — public chat (also proxied as /retrofit/query)
+ *   POST /api/observe  — admin usage summary (Bearer ADMIN_PASSWORD)
+ *
+ * Usage (development):
+ *   cd backend
+ *   VERBOSE=1 ADMIN_PASSWORD=secret node query.mjs
+ *
+ * Usage (production):
+ *   systemd unit backend/retrofit-query-server.service
+ *   (Environment=ADMIN_PASSWORD=…, optional DAILY_TOKEN_BUDGET, VERBOSE, PORT)
+ *
+ * Environment:
+ *   PORT                 Listen port (default 5001)
+ *   ADMIN_PASSWORD       Required for /api/observe (503 if unset)
+ *   DAILY_TOKEN_BUDGET   UTC-day Bedrock token cap (default 200000; 0 disables)
+ *   VERBOSE              1/true/yes enables detailed request/SQL logs
+ *
+ * Requires: directory.db, directory.schema, AWS credentials for Bedrock in eu-west-2.
+ *
+ * @license MIT
+ * Copyright (c) 2025–2026 Nigel Gilbert and contributors
+ * University of Surrey — INHABIT / National Retrofit Hub
+ */
+
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -21,12 +54,6 @@ import {
   getTodayTokenTotal,
 } from './usage.mjs'
 import { tryAnswerProximityQuery } from './proximity.mjs'
-/**
- * HTTP API for natural-language querying over the retrofit SQLite directory
- * and Bedrock Knowledge Base policy documents.
- * It uses Bedrock-hosted models to route intent, generate SQL, retrieve
- * policy passages, and produce natural-language answers.
- */
 
 /** Verbose request logging. Off by default; set VERBOSE=1 (or true) to enable. */
 const VERBOSE = /^(1|true|yes)$/i.test(String(process.env.VERBOSE || ''))
@@ -280,6 +307,11 @@ async function invokeBedrock(prompt, temperature, maxTokens, options = {}) {
   )
 
   // Concatenate text blocks and ignore any non-text blocks (e.g. reasoning content).
+  /**
+   * Concatenate text fragments from a Bedrock content block list.
+   * @param {Array<{ text?: string }>} content
+   * @returns {string}
+   */
   const text = (response.output?.message?.content ?? [])
     .map((block) => block?.text ?? '')
     .join('')
@@ -962,6 +994,11 @@ app.post('/api/query', async (req, res) =>
 
     // Send the response first, then persist. Logging must never add latency to,
     // or be able to fail, a user-facing request.
+    /**
+     * Send the JSON response and persist a usage log entry for this request.
+     * @param {{ response: string, sources?: object[] }} payload
+     * @returns {Promise<void>}
+     */
     const respondAndLog = async (payload) => {
       res.json(payload)
       await saveRequestLog(logEntry)
