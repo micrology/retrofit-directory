@@ -644,6 +644,25 @@ a.action-btn-large:hover {
   font-size: 1.2rem;
 }
 
+/* Full-width credits card (e.g. about page, below the 2-col grid) */
+.info-card.image-credits {
+  margin-bottom: var(--space-6);
+}
+
+.info-card.image-credits ul {
+  margin: 0.75rem 0 0;
+  padding-left: 1.25rem;
+}
+
+.info-card.image-credits li {
+  margin-bottom: 0.5rem;
+  line-height: 1.55;
+}
+
+.info-card.image-credits li:last-child {
+  margin-bottom: 0;
+}
+
 .home-secondary {
   margin-top: var(--space-5);
 }
