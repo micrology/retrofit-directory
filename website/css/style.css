@@ -918,6 +918,11 @@ a.action-btn-large:hover {
   overflow-y: auto;
 }
 
+/* Header + ~5 body rows of the compact admin day table */
+.admin-table-wrap.admin-table-scroll-days {
+  max-height: calc(2.5rem + 5 * 2.35rem);
+}
+
 .admin-table {
   width: 100%;
   border-collapse: collapse;

@@ -385,26 +385,25 @@ function renderDashboard(container, data) {
     )
   )
 
-  fragment.append(
-    buildSection(
-      'By day',
-      buildTable(
-        [
-          { label: 'Day', key: 'day' },
-          { label: 'Queries', key: 'requestCount', numeric: true, format: formatInteger },
-          { label: 'Input tokens', key: 'inputTokens', numeric: true, format: formatInteger },
-          { label: 'Output tokens', key: 'outputTokens', numeric: true, format: formatInteger },
-          {
-            label: 'Estimated cost',
-            key: 'estimatedCostUsd',
-            numeric: true,
-            format: formatCost,
-          },
-        ],
-        data.daily ?? []
-      )
-    )
+  const dailyTable = buildTable(
+    [
+      { label: 'Day', key: 'day' },
+      { label: 'Queries', key: 'requestCount', numeric: true, format: formatInteger },
+      { label: 'Input tokens', key: 'inputTokens', numeric: true, format: formatInteger },
+      { label: 'Output tokens', key: 'outputTokens', numeric: true, format: formatInteger },
+      {
+        label: 'Estimated cost',
+        key: 'estimatedCostUsd',
+        numeric: true,
+        format: formatCost,
+      },
+    ],
+    data.daily ?? []
   )
+  // Newest-first from the API; keep ~5 days in view and scroll for older days.
+  dailyTable.classList.add('admin-table-scroll', 'admin-table-scroll-days')
+
+  fragment.append(buildSection('By day', dailyTable))
 
   fragment.append(
     buildSection(
