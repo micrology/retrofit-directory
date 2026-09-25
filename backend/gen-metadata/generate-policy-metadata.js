@@ -1,16 +1,16 @@
 #!/usr/bin/env node
 /**
  * Generate Amazon Bedrock Knowledge Base metadata sidecar files for PDFs
- * in ./Policies, using metadata from Policy documents_v3.rdf (Zotero RDF/XML).
+ * in backend/Policies, using metadata from Policy documents_v3.rdf (Zotero RDF/XML).
  *
- * Output files: ./Policies/<pdf-filename>.metadata.json
+ * Output files: backend/Policies/<pdf-filename>.metadata.json
  *
- * Usage:
- *   node generate-policy-metadata.js
- *   node generate-policy-metadata.js --dry-run
- *   node generate-policy-metadata.js [rdf-path]
- *   node generate-policy-metadata.js --rdf <path>
- *   node generate-policy-metadata.js --rdf=<path>
+ * Usage (from backend/):
+ *   node gen-metadata/generate-policy-metadata.js
+ *   node gen-metadata/generate-policy-metadata.js --dry-run
+ *   node gen-metadata/generate-policy-metadata.js [rdf-path]
+ *   node gen-metadata/generate-policy-metadata.js --rdf <path>
+ *   node gen-metadata/generate-policy-metadata.js --rdf=<path>
  *
  * @license MIT
  * Copyright (c) 2025–2026 Nigel Gilbert and contributors
@@ -20,7 +20,7 @@
 const fs = require("fs");
 const path = require("path");
 
-const POLICIES_DIR = path.join(__dirname, "Policies");
+const POLICIES_DIR = path.join(__dirname, "..", "Policies");
 const DEFAULT_RDF_PATH = path.join(POLICIES_DIR, "Policy documents_v3.rdf");
 
 /**

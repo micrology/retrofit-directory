@@ -6,7 +6,7 @@
  *
  * Usage:
  *   cd backend
- *   node test-validate-sql.mjs
+ *   node test/test-validate-sql.mjs
  *
  * Exit code: number of failed cases (0 = all pass).
  *

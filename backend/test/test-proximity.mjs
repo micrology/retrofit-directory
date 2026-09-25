@@ -7,7 +7,7 @@
  *
  * Usage:
  *   cd backend
- *   node test-proximity.mjs
+ *   node test/test-proximity.mjs
  *
  * Exit code: number of failed assertions (0 = all pass).
  *
@@ -18,17 +18,17 @@
 
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { geocodePlace, haversineKm, kmToMiles, normalisePlaceKey } from './geocode.mjs'
+import { geocodePlace, haversineKm, kmToMiles, normalisePlaceKey } from '../lib/geocode.mjs'
 import {
   parseProximityIntent,
   tryAnswerProximityQuery,
   findOrganisationsNear,
   isUnspecifiedUserLocation,
   DEFAULT_NEAR_RADIUS_MILES,
-} from './proximity.mjs'
+} from '../lib/proximity.mjs'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
-const DB_PATH = path.join(__dirname, 'directory.db')
+const DB_PATH = path.join(__dirname, '..', 'directory.db')
 
 let fail = 0
 /**

@@ -6,9 +6,9 @@
  *   [display_name] [url]
  *
  * Usage:
- *   node list-document-metadata.js
- *   node list-document-metadata.js --out ./document-index.txt
- *   node list-document-metadata.js --bucket retrofit-directory-documents --region eu-west-2
+ *   node gen-metadata/list-document-metadata.js
+ *   node gen-metadata/list-document-metadata.js --out ./document-index.txt
+ *   node gen-metadata/list-document-metadata.js --bucket retrofit-directory-documents --region eu-west-2
  *
  * @license MIT
  * Copyright (c) 2025–2026 Nigel Gilbert and contributors
@@ -37,7 +37,7 @@ function parseArgs(argv) {
   for (let i = 0; i < args.length; i += 1) {
     const arg = args[i];
     if (arg === "--help" || arg === "-h") {
-      console.log(`Usage: node list-document-metadata.js [options]
+      console.log(`Usage: node gen-metadata/list-document-metadata.js [options]
 
 Download *.metadata.json sidecars from S3 and write:
   [display_name] [url]

@@ -1,17 +1,17 @@
 #!/usr/bin/env node
 /**
  * Fetch a web page with trafilatura (markdown + metadata), save it under
- * ./Policies, and write a Bedrock Knowledge Base sidecar file.
+ * backend/Policies, and write a Bedrock Knowledge Base sidecar file.
  *
  * Sidecar format matches write-metadata.js / generate-policy-metadata.js:
- *   ./Policies/<name>.md
- *   ./Policies/<name>.md.metadata.json
+ *   backend/Policies/<name>.md
+ *   backend/Policies/<name>.md.metadata.json
  *
- * Usage:
- *   node fetch-policy-page.js <url>
- *   node fetch-policy-page.js --url <url>
- *   node fetch-policy-page.js --dry-run <url>
- *   node fetch-policy-page.js --name custom-slug <url>
+ * Usage (from backend/):
+ *   node gen-metadata/fetch-policy-page.js <url>
+ *   node gen-metadata/fetch-policy-page.js --url <url>
+ *   node gen-metadata/fetch-policy-page.js --dry-run <url>
+ *   node gen-metadata/fetch-policy-page.js --name custom-slug <url>
  *
  * @license MIT
  * Copyright (c) 2025–2026 Nigel Gilbert and contributors
@@ -22,7 +22,7 @@ const { spawnSync } = require("child_process");
 const fs = require("fs");
 const path = require("path");
 
-const POLICIES_DIR = path.join(__dirname, "Policies");
+const POLICIES_DIR = path.join(__dirname, "..", "Policies");
 
 /**
  * Parse CLI argv into an options object.
@@ -82,7 +82,7 @@ function parseArgs(argv) {
       console.log(`Usage: node fetch-policy-page.js [options] <url>
 
 Fetch a page with trafilatura (--markdown --with-metadata), write Markdown
-to ./Policies, and create a matching Bedrock KB sidecar JSON file.
+to backend/Policies, and create a matching Bedrock KB sidecar JSON file.
 
 Options:
   -u, --url <url>     Page URL (alternative to positional argument)

@@ -34,7 +34,8 @@ import { parse } from 'csv-parse/sync'
  */
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
-export const GEO_DIR = path.join(__dirname, 'geo')
+const BACKEND_ROOT = path.join(__dirname, '..')
+export const GEO_DIR = path.join(BACKEND_ROOT, 'geo')
 
 /** Columns added to `orgs` / exposed on `orgs_llm` after postcode enrichment. */
 export const ENRICHMENT_COLUMNS = [

@@ -6,8 +6,8 @@
  * `orgs_llm`, and formats Markdown answers for the chat UI.
  *
  * Library module (not a CLI). Used by:
- *   query.mjs              — intercepts proximity questions before text-to-SQL
- *   test-proximity.mjs     — offline unit tests
+ *   query.mjs               — intercepts proximity questions before text-to-SQL
+ *   test/test-proximity.mjs — offline unit tests
  *
  * Depends on: geocode.mjs, directory.db with hq_latitude/hq_longitude populated.
  * Default near radius: 25 miles (DEFAULT_NEAR_RADIUS_MILES).

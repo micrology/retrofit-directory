@@ -52,13 +52,17 @@ import {
   saveRequestLog,
   getUsageSummary,
   getTodayTokenTotal,
-} from './usage.mjs'
-import { tryAnswerProximityQuery } from './proximity.mjs'
+} from './lib/usage.mjs'
+import { tryAnswerProximityQuery } from './lib/proximity.mjs'
 
 /** Verbose request logging. Off by default; set VERBOSE=1 (or true) to enable. */
 const VERBOSE = /^(1|true|yes)$/i.test(String(process.env.VERBOSE || ''))
 const DB_PATH = path.join(path.dirname(fileURLToPath(import.meta.url)), 'directory.db')
 const SCHEMA_PATH = path.join(path.dirname(fileURLToPath(import.meta.url)), 'directory.schema')
+const CANONICAL_SCHEMA_PATH = path.join(
+  path.dirname(fileURLToPath(import.meta.url)),
+  'directory.schema.canonical'
+)
 const BEDROCK_REGION = 'eu-west-2'
 const BEDROCK_MODEL_ID = 'eu.anthropic.claude-haiku-4-5-20251001-v1:0'
 const CHEAP_MODEL_ID = 'qwen.qwen3-235b-a22b-2507-v1:0'
@@ -71,7 +75,6 @@ const KNOWLEDGE_BASE_ID = 'U8L4ZLT14K'
 const KB_GENERATION_MODEL_ARN = BEDROCK_MODEL_ID
 const SQL_MAX_TOKENS = 300
 const ANSWER_MAX_TOKENS = 2000
-const WRAPPER_MAX_TOKENS = 220
 const REFORMULATE_MAX_TOKENS = 120
 const ROUTE_MAX_TOKENS = 20
 const MAX_HISTORY_TURNS = 3 // number of previous turns kept for context in query reformulation
@@ -96,9 +99,14 @@ const VALID_INTENTS = new Set(['directory', 'policy', 'out_of_scope'])
 const FORBIDDEN_SQL_KEYWORD =
   /\b(?:ATTACH|DETACH|DROP|INSERT|UPDATE|DELETE|ALTER|CREATE|REINDEX|VACUUM|PRAGMA|ANALYZE|GRANT|REVOKE|TRUNCATE|MERGE|CALL|EXEC(?:UTE)?|LOAD_EXTENSION|INTO)\b/i
 const FORBIDDEN_SQL_REPLACE_STMT = /\bREPLACE\s+(?:OR\s+\w+\s+)?(?:INTO\b|\w+)/i
+// Keep aligned with backend/lib/orgsLlmView.mjs CANONICAL_LLM_COLUMNS (subset used for SQL rewrites).
 const CANONICAL_LLM_COLUMNS = [
   'org_name',
+  'department_or_unit',
   'org_main_type',
+  'org_type_other_public',
+  'org_type_other_private',
+  'org_type_other_nonprofit',
   'county',
   'postcode',
   'local_authority',
@@ -106,14 +114,44 @@ const CANONICAL_LLM_COLUMNS = [
   'hq_latitude',
   'hq_longitude',
   'geographic_scope',
+  'countries',
   'operating_areas',
+  'operating_areas_other',
   'main_mission_or_remit',
   'retrofit_relevance',
   'primary_activity',
+  'primary_activity_other',
   'other_activities',
+  'other_activities_other',
   'specialisms',
+  'specialisms_other',
   'methods_or_skills',
+  'methods_or_skills_other',
+  'works_with_fuel_poverty',
+  'works_with_health_housing',
+  'works_with_inequalities',
+  'works_with_tenants_associations',
+  'works_with_community_groups',
+  'works_with_general_public',
+  'works_with_local_authorities',
+  'works_with_central_government',
+  'works_with_regulators',
+  'works_with_funders',
+  'works_with_social_housing',
+  'works_with_housing_associations',
+  'works_with_private_housing',
+  'works_with_developers_installers',
+  'works_with_product_suppliers',
   'works_with_architects',
+  'works_with_building_managers',
+  'works_with_researchers',
+  'works_with_network_convenors',
+  'works_with_consultants',
+  'works_with_other_audiences',
+  'works_with_other_audiences_text',
+  'schemes_delivered',
+  'schemes_la_finance_detail',
+  'schemes_other_detail',
   'website',
   'contact_email',
   'employee_count_band',
@@ -204,7 +242,13 @@ async function start() {
   })
   httpTerminator = createHttpTerminator({ server })
 }
-start()
+
+// Allow `import` from offline unit tests without binding a port.
+const isMainModule =
+  process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])
+if (isMainModule) {
+  start()
+}
 
 /**
  * Open the SQLite database in read-only mode for query execution.
@@ -260,20 +304,36 @@ function close(db) {
 }
 
 /**
- * Read the persisted plain-text schema used in SQL-generation prompts.
+ * Read a persisted plain-text schema used in SQL-generation prompts.
+ * @param {'canonical' | 'full'} [mode='canonical']
+ *   canonical — orgs_llm only (default text-to-SQL path)
+ *   full — raw orgs + orgs_llm (SQL repair / fallback when canonical file missing)
  * @returns {string}
  */
-function readSchema() {
+function readSchema(mode = 'canonical') {
+  const preferCanonical = mode === 'canonical'
+  const primaryPath = preferCanonical ? CANONICAL_SCHEMA_PATH : SCHEMA_PATH
+  const fallbackPath = preferCanonical ? SCHEMA_PATH : CANONICAL_SCHEMA_PATH
+
   try {
-    return fs.readFileSync(SCHEMA_PATH, 'utf8')
+    return fs.readFileSync(primaryPath, 'utf8')
   } catch (err) {
     if (err.code === 'ENOENT') {
-      console.error(
-        `Error: schema file not found at ${SCHEMA_PATH}. ` + `Run csvToDB.mjs first to generate it.`
-      )
-    } else {
-      console.error(`Error reading schema file at ${SCHEMA_PATH}:`, err.message)
+      try {
+        const fallback = fs.readFileSync(fallbackPath, 'utf8')
+        logAPICalls(
+          `Schema file missing at ${primaryPath}; falling back to ${fallbackPath}`
+        )
+        return fallback
+      } catch (fallbackErr) {
+        console.error(
+          `Error: schema file not found at ${primaryPath} or ${fallbackPath}. ` +
+            `Run csvToDB.mjs or rebuild-orgs-llm.mjs first.`
+        )
+        throw fallbackErr
+      }
     }
+    console.error(`Error reading schema file at ${primaryPath}:`, err.message)
     throw err
   }
 }
@@ -331,26 +391,29 @@ async function invokeBedrock(prompt, temperature, maxTokens, options = {}) {
  * @returns {Promise<string>}
  */
 export async function generateSqlFromQuery(userQuery) {
-  const schema = readSchema()
+  // Default path: canonical orgs_llm-only schema (smaller prompt, lower latency).
+  const schema = readSchema('canonical')
 
   const prompt = `You are an expert SQLite data analyst. Your job is to convert a user's natural language question into a valid, safe SQLite SELECT query based on the provided schema.
 
-    This database is a survey export: column names are the full survey question text, and each column annotation shows how many rows are populated plus example values.
+    The schema describes the canonical view orgs_llm only. Column annotations show how many rows are populated plus example values.
 
     Rules:
     - Return ONLY the raw SQL query. Do not include markdown formatting (like \`\`\`sql), code blocks, or explanatory text.
     - Only use SELECT statements. Never generate INSERT, UPDATE, DELETE, or DROP statements.
+    - Always query FROM orgs_llm. Do not reference a table named orgs.
+    - Use only column names listed in the schema. Do not invent columns.
     - Use case-insensitive matching where appropriate (e.g., LIKE '%Manchester%') for text filters.
     - For list-style outputs (especially organisation names), use DISTINCT unless duplicates are explicitly requested.
-    - The Directory contains duplicate entries: the same organisation can appear in more than one row. When the user asks to count organisations, count DISTINCT identities with COUNT(DISTINCT org_name) rather than COUNT(*), so each organisation is counted only once. Reserve COUNT(*) for counting raw rows/entries (e.g. survey responses) rather than distinct organisations.
-    - Prefer querying the canonical view orgs_llm when it is present in the schema; its columns are semantic aliases (e.g. org_name, county, postcode, local_authority, parish, org_main_type, works_with_architects) and should be preferred over long raw survey column names.
-    - If you reference any canonical alias column (e.g. org_name, org_main_type, county, postcode, local_authority), you MUST query FROM orgs_llm (never FROM orgs).
-    - Never select or filter on columns marked [EMPTY - no data]; they contain no values. For example, an organisation's "name" is the answer to the "name of the organisation" question column, NOT the empty recipient_first_name/recipient_last_name metadata columns.
-    - Use the example values to map the user's terms to the correct column and its stored values. For multi-select questions, a populated cell (e.g. 'Directly'/'Indirectly') means the option was chosen; filter with "col" IS NOT NULL AND TRIM("col") != '' rather than assuming a 'Yes' value.
-    - Disambiguation rule: if the user asks whether an organisation IS a type of organisation/persona (e.g. architect, engineer, local authority), use org_main_type (or the raw "main type" selected-choice column). Only use collaboration/audience columns such as works_with_architects when the user asks who the organisation works with.
-    - Place / location questions ("in Wokingham", "based in Manchester", "how many in Kent"): filter with case-insensitive LIKE against local_authority, parish, and/or county as appropriate. local_authority is the ONS local authority district derived from the HQ postcode (e.g. Wokingham); parish is the civil parish when present; county is the survey self-report (often a ceremonial/historic county such as Berkshire (England)). Prefer local_authority for towns and unitary/district names; use county when the user names a county that matches survey values. OR across place columns when a single place name might appear in more than one field. Do not invent postcode prefixes.
-    - Do NOT write Haversine/distance SQL for "near", "nearest", "within N miles", or "closest to" questions — those are handled outside text-to-SQL. If you somehow receive one, fall back to local_authority/parish/county text filters only.
-    - IMPORTANT: never use survey IP geolocation for organisation location. hq_latitude/hq_longitude are HQ postcode centroids (ONSPD). Survey location_latitude/location_longitude (if present on raw orgs) are respondent IP location and must not be used.
+    - The Directory contains duplicate entries: the same organisation can appear in more than one row. When the user asks to count organisations, count DISTINCT identities with COUNT(DISTINCT org_name) rather than COUNT(*), so each organisation is counted only once. Reserve COUNT(*) for counting raw rows/entries rather than distinct organisations.
+    - Never select or filter on columns marked [EMPTY - no data].
+    - Use the example values to map the user's terms to the correct column and its stored values. For works_with_* audience columns, a populated cell is usually 'Directly' or 'Indirectly'; filter with col IS NOT NULL AND TRIM(col) != '' rather than assuming 'Yes'.
+    - Disambiguation: if the user asks whether an organisation IS a type (architect, engineer, local authority), use org_main_type (and org_type_other_* free text when helpful). Use works_with_* only when asking who the organisation works with / serves.
+    - "Community-led" / community groups: prefer specialisms, main_mission_or_remit, other_activities, and/or works_with_community_groups as appropriate.
+    - Scheme delivery questions (Green Homes Grant, HUGS, etc.): use schemes_delivered and schemes_*_detail.
+    - Place / location questions ("in Wokingham", "based in Manchester", "how many in Kent"): filter with case-insensitive LIKE against local_authority, parish, county, and/or operating_areas as appropriate. Prefer local_authority for towns and districts; county for ceremonial/historic counties; operating_areas for nations/regions such as London/Scotland/Wales. OR across place columns when a single place name might appear in more than one field. Do not invent postcode prefixes.
+    - Do NOT write Haversine/distance SQL for "near", "nearest", "within N miles", or "closest to" questions — those are handled outside text-to-SQL. If you somehow receive one, fall back to local_authority/parish/county/operating_areas text filters only.
+    - hq_latitude/hq_longitude are HQ postcode centroids (ONSPD), not survey IP location.
 
     Schema:
     ${schema}
@@ -369,7 +432,8 @@ export async function generateSqlFromQuery(userQuery) {
  * @returns {Promise<string>}
  */
 export async function regenerateSqlFromError(userQuery, previousSql, sqliteError) {
-  const schema = readSchema()
+  // Repair may need the full raw+canonical schema when the first pass missed a column.
+  const schema = readSchema('full')
 
   const prompt = `You are fixing a failed SQLite SELECT query.
 
@@ -377,11 +441,12 @@ export async function regenerateSqlFromError(userQuery, previousSql, sqliteError
 
     Rules:
     - Only use SELECT statements. Never generate INSERT, UPDATE, DELETE, DROP, ALTER, or PRAGMA.
-    - Use the provided schema exactly.
+    - Prefer the canonical view orgs_llm and its short alias columns whenever they can answer the question.
+    - If and only if orgs_llm cannot express the filter, you may use long raw column names on table orgs from the full schema.
+    - If you reference canonical alias columns (e.g. org_name, org_main_type, county, works_with_community_groups), query FROM orgs_llm (not orgs).
     - For list-style outputs (especially organisation names), use DISTINCT unless duplicates are explicitly requested.
     - The Directory contains duplicate entries: when counting organisations, use COUNT(DISTINCT org_name) rather than COUNT(*).
-    - If you reference canonical alias columns (e.g. org_name, org_main_type, county, postcode, local_authority), query FROM orgs_llm (not orgs).
-    - For place filters, use local_authority / parish / county (LIKE), not invented postcode districts.
+    - For place filters, use local_authority / parish / county / operating_areas (LIKE), not invented postcode districts.
     - Never select or filter on columns marked [EMPTY - no data].
     - Keep the corrected query semantically faithful to the original user question.
 
@@ -398,9 +463,10 @@ export async function regenerateSqlFromError(userQuery, previousSql, sqliteError
 }
 
 /**
- * Execute SQL against the SQLite directory and return row values only.
+ * Execute SQL against the SQLite directory and return column names plus row values.
+ * Column names enable zero-LLM formatting of multi-field organisation profiles.
  * @param {string} sqlQuery
- * @returns {Promise<any[][]>}
+ * @returns {Promise<{ columns: string[], rows: any[][] }>}
  */
 export async function queryDatabase(sqlQuery) {
   const db = await openDatabase(DB_PATH)
@@ -408,7 +474,12 @@ export async function queryDatabase(sqlQuery) {
   try {
     const rows = await all(db, sqlQuery)
     const limited = rows.length > MAX_SQL_RESULT_ROWS ? rows.slice(0, MAX_SQL_RESULT_ROWS) : rows
-    return limited.map((row) => Object.values(row))
+    if (limited.length === 0) return { columns: [], rows: [] }
+    const columns = Object.keys(limited[0])
+    return {
+      columns,
+      rows: limited.map((row) => columns.map((column) => row[column])),
+    }
   } finally {
     await close(db)
   }
@@ -444,88 +515,182 @@ export async function generateNaturalLanguageAnswer(userQuery, sqlQuery, rawResu
 }
 
 /**
- * Build deterministic facts for cases where exactness should not depend on LLM generation.
- * @param {any[][]} rawResults
- * @returns {{ kind: "count", count: number } | { kind: "long_list", count: number, items: string[] } | null}
+ * True when the question treats the Directory as a complete UK-wide census.
+ * Used only to decide whether template answers need a coverage caveat.
+ * @param {string} userQuery
+ * @returns {boolean}
  */
-function buildDeterministicFacts(rawResults) {
-  if (!Array.isArray(rawResults) || rawResults.length === 0) return null
-  if (!rawResults.every((row) => Array.isArray(row) && row.length === 1)) return null
-
-  const values = rawResults.map((row) => row[0])
-  const allNumeric = values.every((value) => typeof value === 'number')
-  if (rawResults.length === 1 && allNumeric) {
-    return { kind: 'count', count: values[0] }
-  }
-
-  if (rawResults.length < LONG_LIST_THRESHOLD) return null
-  const items = values.map((value) => {
-    if (value === null || value === undefined || String(value).trim() === '') return '(blank)'
-    return String(value).trim()
-  })
-  return { kind: 'long_list', count: rawResults.length, items }
+function queryImpliesUkWideExhaustive(userQuery) {
+  const q = String(userQuery || '').toLowerCase()
+  if (/\bin the (?:retrofit )?directory\b/.test(q)) return false
+  return /\b(?:across the uk|in the uk|united kingdom|nationwide|the whole country|every (?:org|organisation|organization))\b/.test(
+    q
+  )
 }
 
 /**
- * Generate a friendly wrapper around deterministic facts while preserving exactness.
- * @param {string} userQuery
- * @param {{ kind: "count", count: number } | { kind: "long_list", count: number, items: string[] }} deterministicFacts
- * @returns {Promise<string>}
+ * Humanise a SQL column alias for template profile answers.
+ * @param {string} column
+ * @returns {string}
  */
-async function generateDeterministicWrappedAnswer(userQuery, deterministicFacts) {
-  if (deterministicFacts.kind === 'count') {
-    const count = deterministicFacts.count
-    const prompt = `Write one concise, friendly sentence that answers the user's question.
+export function humaniseColumnLabel(column) {
+  const key = String(column || '').trim()
+  const known = {
+    org_name: 'Organisation',
+    department_or_unit: 'Department / unit',
+    org_main_type: 'Type',
+    org_type_other_public: 'Type (other public)',
+    org_type_other_private: 'Type (other private)',
+    org_type_other_nonprofit: 'Type (other non-profit)',
+    main_mission_or_remit: 'Mission / remit',
+    retrofit_relevance: 'Retrofit relevance',
+    primary_activity: 'Primary activity',
+    primary_activity_other: 'Primary activity (other)',
+    other_activities: 'Other activities',
+    other_activities_other: 'Other activities (other)',
+    specialisms: 'Specialisms',
+    specialisms_other: 'Specialisms (other)',
+    methods_or_skills: 'Methods / skills',
+    methods_or_skills_other: 'Methods / skills (other)',
+    works_with_fuel_poverty: 'Works with people in fuel poverty',
+    works_with_health_housing: 'Works with health / housing vulnerability',
+    works_with_inequalities: 'Works with groups facing inequalities',
+    works_with_tenants_associations: "Works with tenants' associations",
+    works_with_community_groups: 'Works with community groups',
+    works_with_general_public: 'Works with the general public',
+    works_with_local_authorities: 'Works with local authorities',
+    works_with_central_government: 'Works with central government',
+    works_with_regulators: 'Works with regulators / standards bodies',
+    works_with_funders: 'Works with funders / investors',
+    works_with_social_housing: 'Works with social housing providers',
+    works_with_housing_associations: 'Works with housing associations',
+    works_with_private_housing: 'Works with private housing / landlords',
+    works_with_developers_installers: 'Works with developers / installers',
+    works_with_product_suppliers: 'Works with product suppliers',
+    works_with_architects: 'Works with architects / engineers',
+    works_with_building_managers: 'Works with building managers',
+    works_with_researchers: 'Works with researchers',
+    works_with_network_convenors: 'Works with network convenors',
+    works_with_consultants: 'Works with consultants / advisors',
+    works_with_other_audiences: 'Works with other audiences',
+    works_with_other_audiences_text: 'Other audiences (detail)',
+    schemes_delivered: 'Schemes delivered',
+    schemes_la_finance_detail: 'LA finance schemes (detail)',
+    schemes_other_detail: 'Other schemes (detail)',
+    contact_email: 'Email',
+    employee_count_band: 'Employee band',
+    geographic_scope: 'Geographic scope',
+    countries: 'Countries',
+    operating_areas: 'Operating areas',
+    operating_areas_other: 'Operating areas (other)',
+    local_authority: 'Local authority',
+    hq_latitude: 'HQ latitude',
+    hq_longitude: 'HQ longitude',
+  }
+  if (known[key]) return known[key]
+  return key
+    .replace(/^org_/i, '')
+    .replace(/_/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/^./, (ch) => ch.toUpperCase())
+}
 
-Rules:
-- You MUST keep the exact count as ${count}.
-- Do not change the number or add uncertainty.
-- Do not mention SQL or databases unless the user explicitly asked about them.
-- The count reflects only organisations listed in the Retrofit Directory, which is NOT an exhaustive list of every retrofit organisation in the UK. If the user's question asks about the total number in the UK (or a wider population) as though the Directory were complete, make this clear and frame the count as applying only to Directory listings, e.g. "I can only tell you about the organisations listed in the Retrofit Directory; there are ${count} of these." If the user's question is specifically about the Directory itself, no such caveat is needed.
-- Output only the final sentence for the end user (no preface, no labels, no quotes).
+/**
+ * Format a cell value for display; blank-ish values are omitted by callers.
+ * @param {unknown} value
+ * @returns {string}
+ */
+function formatCellValue(value) {
+  if (value === null || value === undefined) return ''
+  if (typeof value === 'number' && Number.isFinite(value)) return String(value)
+  return String(value).replace(/\s+/g, ' ').trim()
+}
 
-User question: "${userQuery}"
-Exact count: ${count}
-Sentence:`
-
-    const wrapped = (
-      await invokeBedrock(prompt, 0.2, WRAPPER_MAX_TOKENS, { stage: 'wrapper_count' })
-    )
-      .replace(/^["'“”]+|["'“”]+$/g, '')
-      .trim()
-    const countPattern = new RegExp(`\\b${count}\\b`)
-    if (countPattern.test(wrapped)) return wrapped
-    return `There are ${count} matching records.`
+/**
+ * Build a directory answer without a second Bedrock call when the result shape
+ * is simple enough (empty, count, name list, or small multi-column profile).
+ * Returns null when free-form NL generation is still needed.
+ *
+ * @param {string} userQuery
+ * @param {string[]} columns
+ * @param {any[][]} rawResults
+ * @returns {string | null}
+ */
+export function formatDirectoryAnswer(userQuery, columns, rawResults) {
+  const rows = Array.isArray(rawResults) ? rawResults : []
+  if (rows.length === 0) {
+    return 'No matching organisations were found in the Retrofit Directory for that question.'
   }
 
-  const count = deterministicFacts.count
-  const prompt = `Write a short friendly introduction (1-2 sentences) for a list answer.
+  const caveat = queryImpliesUkWideExhaustive(userQuery)
+    ? ' This reflects only organisations listed in the Retrofit Directory, not every retrofit organisation in the UK.'
+    : ''
 
-Rules:
-- You MUST keep the exact count as ${count}.
-- Mention that the full list follows.
-- Do not include item names in the introduction.
-- Do not mention SQL or databases unless the user explicitly asked about them.
-- The list reflects only organisations listed in the Retrofit Directory, which is NOT an exhaustive list of every retrofit organisation in the UK. If the user's question asks for all organisations in the UK (or a wider population) as though the Directory were complete, make clear that the list covers only Directory listings. If the user's question is specifically about the Directory itself, no such caveat is needed.
-- Output only the final introduction text for the end user (no preface like "Here is...", no labels, no quotes).
+  // Single numeric aggregate (COUNT, etc.).
+  if (
+    rows.length === 1 &&
+    Array.isArray(rows[0]) &&
+    rows[0].length === 1 &&
+    typeof rows[0][0] === 'number'
+  ) {
+    const count = rows[0][0]
+    if (caveat) {
+      return `I can only report organisations listed in the Retrofit Directory; there are ${count} matching records.${caveat}`
+    }
+    return `There are ${count} matching records in the Retrofit Directory.`
+  }
 
-User question: "${userQuery}"
-Exact count: ${count}
-Introduction:`
+  // Single-column list (org names, types, places, …) — any length.
+  if (rows.every((row) => Array.isArray(row) && row.length === 1)) {
+    const items = rows.map((row) => {
+      const text = formatCellValue(row[0])
+      return text || '(blank)'
+    })
+    if (items.length === 1) {
+      return `${items[0]}${caveat}`
+    }
+    const intro =
+      items.length >= LONG_LIST_THRESHOLD
+        ? `There are ${items.length} matching records in the Retrofit Directory. The full list is below.${caveat}`
+        : `There are ${items.length} matching records in the Retrofit Directory:${caveat}`
+    const lines = items.map((item, index) => `${index + 1}. ${item}`)
+    return `${intro}\n\n${lines.join('\n')}`
+  }
 
-  const intro = (await invokeBedrock(prompt, 0.2, WRAPPER_MAX_TOKENS, { stage: 'wrapper_list' }))
-    .replace(/^["'“”]+|["'“”]+$/g, '')
-    .replace(/^here(?:'s| is)\b[^:]*:\s*/i, '')
-    .replace(/^introduction:\s*/i, '')
-    .replace(/^sentence:\s*/i, '')
-    .trim()
-  const countPattern = new RegExp(`\\b${count}\\b`)
-  const safeIntro = countPattern.test(intro)
-    ? intro
-    : `There are ${count} matching records. The full list is below.`
+  // Small multi-column result sets: render a structured profile/list.
+  const colCount = Array.isArray(rows[0]) ? rows[0].length : 0
+  const colNames =
+    Array.isArray(columns) && columns.length === colCount
+      ? columns
+      : Array.from({ length: colCount }, (_, i) => `Field ${i + 1}`)
 
-  const lines = deterministicFacts.items.map((item, index) => `${index + 1}. ${item}`)
-  return `${safeIntro}\n\n${lines.join('\n')}`
+  // Richer orgs_llm profiles can return many works_with_* fields; still template them.
+  if (rows.length <= 25 && colCount >= 2 && colCount <= 40) {
+    const nameIdx = colNames.findIndex((c) => /^(org_name|name)$/i.test(String(c)))
+    const blocks = rows.map((row) => {
+      const cells = colNames.map((col, i) => ({
+        label: humaniseColumnLabel(col),
+        value: formatCellValue(row[i]),
+      }))
+      const title =
+        nameIdx >= 0 && cells[nameIdx]?.value
+          ? cells[nameIdx].value
+          : cells.find((c) => c.value)?.value || 'Record'
+      const details = cells
+        .filter((c, i) => c.value && i !== nameIdx)
+        .map((c) => `- **${c.label}:** ${c.value}`)
+      return details.length ? `**${title}**\n${details.join('\n')}` : `**${title}**`
+    })
+
+    if (blocks.length === 1) {
+      return `${blocks[0]}${caveat ? `\n\n${caveat.trim()}` : ''}`
+    }
+    const intro = `There are ${blocks.length} matching records in the Retrofit Directory:${caveat}`
+    return `${intro}\n\n${blocks.join('\n\n')}`
+  }
+
+  return null
 }
 
 /**
@@ -754,13 +919,82 @@ async function reformulateUserQueryToIncludePreviousContext(messages, lastUserMe
 }
 
 /**
+ * Fast keyword/intent rules that avoid a Bedrock round-trip when confident.
+ * Returns null when the question is ambiguous and the LLM router should run.
+ *
+ * @param {string} userQuery
+ * @returns {'directory' | 'policy' | 'out_of_scope' | null}
+ */
+export function classifyQueryIntentHeuristic(userQuery) {
+  const q = String(userQuery || '')
+    .toLowerCase()
+    .replace(/[“”]/g, '"')
+    .replace(/[‘’]/g, "'")
+    .replace(/\s+/g, ' ')
+    .trim()
+  if (!q) return null
+
+  // Clear non-retrofit chit-chat / trivia.
+  if (
+    /\b(weather|forecast|recipe|football|lottery|stock price|bitcoin|write (?:me )?(?:a )?poem|joke)\b/.test(
+      q
+    ) &&
+    !/\bretrofit|housing|heat pump|insulation|epc\b/.test(q)
+  ) {
+    return 'out_of_scope'
+  }
+
+  const policyHit =
+    /\b(funding|fund(?:s|ing)?|grant(?:s)?|subsid(?:y|ies)|rebate(?:s)?|eligib(?:le|ility)|regulati(?:on|ons)|legislat(?:ion|e)|polic(?:y|ies)|scheme(?:s)?|strateg(?:y|ies)|guidance|standard(?:s)?|obligation(?:s)?|compliance|eco\s*4?\b|green deal|boiler upgrade|bus\b|heat and buildings|pas\s*2035|ofgem|fuel poverty|epbd|heca|warm home(?:s)?|social housing decarbonisation)\b/.test(
+      q
+    ) ||
+    /\bwhat (?:is|are|does)\b/.test(q) ||
+    /\b(?:define|definition of)\b/.test(q) ||
+    /\bis there (?:any )?(?:funding|grant|support|subsidy)\b/.test(q)
+
+  const directoryHit =
+    /\b(organisati(?:on|ons)|organizati(?:on|ons)|\borgs?\b|installer(?:s)?|architect(?:s)?|contractor(?:s)?|consultant(?:s)?|manufacturer(?:s)?|directory)\b/.test(
+      q
+    ) ||
+    /\b(?:who (?:is|are) working|which (?:org|organisation|organization|company|companies|installer|architect)|how many|based in|located in|listed in|tell me about|contact (?:email|details)|website|email address|near(?:est)?\b|within \d+|working on|works on)\b/.test(
+      q
+    ) ||
+    /\bin (?:london|manchester|birmingham|bristol|leeds|glasgow|edinburgh|cardiff|belfast|[a-z]+shire)\b/.test(
+      q
+    )
+
+  if (policyHit && !directoryHit) return 'policy'
+  if (directoryHit && !policyHit) return 'directory'
+  if (policyHit && directoryHit) {
+    // Funding/rules about measures beat org-type words (“heat pump installation”).
+    if (
+      /\b(funding|fund(?:s|ing)?|grant(?:s)?|subsid|eligib|regulati|legislat|polic(?:y|ies)|scheme|guidance|strateg)/.test(
+        q
+      ) ||
+      /\bwhat (?:is|are|does)\b/.test(q)
+    ) {
+      return 'policy'
+    }
+    return 'directory'
+  }
+  return null
+}
+
+/**
  * Classify whether the user wants a directory (SQL) lookup, policy-document RAG,
- * or something outside both scopes. Defaults to directory on failure so existing
- * organisation queries keep working if the router is unavailable.
+ * or something outside both scopes. Tries a zero-latency heuristic first, then
+ * Haiku. Defaults to directory on failure so existing organisation queries keep
+ * working if the router is unavailable.
  * @param {string} userQuery
  * @returns {Promise<'directory' | 'policy' | 'out_of_scope'>}
  */
 async function classifyQueryIntent(userQuery) {
+  const heuristic = classifyQueryIntentHeuristic(userQuery)
+  if (heuristic) {
+    logAPICalls('Intent classified heuristically:', heuristic)
+    return heuristic
+  }
+
   const prompt = `Classify the user's question into exactly one label.
 
 Labels:
@@ -1061,6 +1295,23 @@ app.post('/api/query', async (req, res) =>
       // Sanitise: strip characters that could break prompt string delimiters.
       const safeQuery = userQuery.replace(/["\\]/g, ' ').trim()
 
+      // Proximity (near/nearest) needs no intent LLM and no text-to-SQL — run first.
+      const proximity = await tryAnswerProximityQuery(safeQuery, DB_PATH)
+      if (proximity.handled) {
+        logEntry.route = 'directory'
+        logEntry.sqlQuery = proximity.sqlQuery
+        logEntry.rowCount = proximity.rowCount
+        logEntry.response = proximity.answer
+        logEntry.outcome = 'ok'
+        logAPICalls('Proximity query processed:', {
+          safeQuery,
+          sqlQuery: proximity.sqlQuery,
+          rowCount: proximity.rowCount,
+          meta: proximity.meta,
+        })
+        return respondAndLog({ response: proximity.answer, sources: [] })
+      }
+
       const intent = await classifyQueryIntent(safeQuery)
       logEntry.route = intent
       logAPICalls('Classified intent:', intent)
@@ -1084,22 +1335,7 @@ app.post('/api/query', async (req, res) =>
         return respondAndLog({ response: answer, sources })
       }
 
-      // Directory path: proximity (near/nearest) is deterministic; otherwise text-to-SQL.
-      const proximity = await tryAnswerProximityQuery(safeQuery, DB_PATH)
-      if (proximity.handled) {
-        logEntry.sqlQuery = proximity.sqlQuery
-        logEntry.rowCount = proximity.rowCount
-        logEntry.response = proximity.answer
-        logEntry.outcome = 'ok'
-        logAPICalls('Proximity query processed:', {
-          safeQuery,
-          sqlQuery: proximity.sqlQuery,
-          rowCount: proximity.rowCount,
-          meta: proximity.meta,
-        })
-        return respondAndLog({ response: proximity.answer, sources: [] })
-      }
-
+      // Directory path: text-to-SQL, then template answer when the shape is simple.
       const generatedSqlQuery = await generateSqlFromQuery(safeQuery)
       let sqlQuery = extractSqlFromLlmOutput(generatedSqlQuery)
       sqlQuery = alignCanonicalColumnsToLlmView(sqlQuery)
@@ -1124,9 +1360,10 @@ app.post('/api/query', async (req, res) =>
       }
 
       let repaired = false
-      let rawResults
+      /** @type {{ columns: string[], rows: any[][] }} */
+      let queryResult
       try {
-        rawResults = await queryDatabase(sqlQuery)
+        queryResult = await queryDatabase(sqlQuery)
       } catch (dbError) {
         const sqliteErrorText = dbError?.message || String(dbError)
         const repairedSqlRaw = await regenerateSqlFromError(safeQuery, sqlQuery, sqliteErrorText)
@@ -1149,7 +1386,7 @@ app.post('/api/query', async (req, res) =>
           }
           throw error
         }
-        rawResults = await queryDatabase(sqlQuery)
+        queryResult = await queryDatabase(sqlQuery)
         repaired = true
         logAPICalls('Query repaired after initial SQLite error:', {
           safeQuery,
@@ -1157,10 +1394,12 @@ app.post('/api/query', async (req, res) =>
           repairedSql: sqlQuery,
         })
       }
-      const deterministicFacts = buildDeterministicFacts(rawResults)
-      const answer = deterministicFacts
-        ? await generateDeterministicWrappedAnswer(safeQuery, deterministicFacts)
-        : await generateNaturalLanguageAnswer(safeQuery, sqlQuery, rawResults)
+
+      const { columns, rows: rawResults } = queryResult
+      const templated = formatDirectoryAnswer(safeQuery, columns, rawResults)
+      const answer =
+        templated ??
+        (await generateNaturalLanguageAnswer(safeQuery, sqlQuery, rawResults))
 
       // Return only the natural-language answer; SQL and raw rows are logged server-side only.
       // Directory answers keep sources empty by product choice.
@@ -1168,6 +1407,7 @@ app.post('/api/query', async (req, res) =>
         safeQuery,
         sqlQuery,
         rowCount: rawResults.length,
+        templated: Boolean(templated),
         SQLresults: rawResults,
       })
 

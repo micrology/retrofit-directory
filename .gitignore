@@ -72,3 +72,10 @@ backend/geo/geocode-cache.json
 
 # Notes
 notes/
+
+# Policy corpus bulk files (keep README only)
+backend/Policies/**
+!backend/Policies/
+!backend/Policies/README.md
+backend/gen-metadata/document-index.txt
+

@@ -35,7 +35,7 @@ import sqlite3 from 'sqlite3'
  * swallows its own errors and logs instead of throwing.
  */
 
-const USAGE_DB_PATH = path.join(path.dirname(fileURLToPath(import.meta.url)), 'usage.db')
+const USAGE_DB_PATH = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'usage.db')
 
 /**
  * Bedrock on-demand prices in USD per 1,000,000 tokens, keyed by model id.

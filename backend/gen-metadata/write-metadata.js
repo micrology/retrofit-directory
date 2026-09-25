@@ -2,10 +2,10 @@
 /**
  * Prompt for webpage metadata and write a Bedrock KB sidecar file.
  *
- * Output: ./Policies/<file name>.pdf.metadata.json
+ * Output: backend/Policies/<file name>.pdf.metadata.json
  *
- * Usage:
- *   node write-metadata.js
+ * Usage (from backend/):
+ *   node gen-metadata/write-metadata.js
  *
  * @license MIT
  * Copyright (c) 2025–2026 Nigel Gilbert and contributors
@@ -16,7 +16,7 @@ const fs = require("fs");
 const path = require("path");
 const readline = require("readline");
 
-const POLICIES_DIR = path.join(__dirname, "Policies");
+const POLICIES_DIR = path.join(__dirname, "..", "Policies");
 
 /**
  * Prompt on a readline interface and resolve with the trimmed answer.

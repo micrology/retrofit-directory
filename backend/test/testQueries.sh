@@ -6,7 +6,7 @@
 # test-validate-sql.mjs for offline unit checks.
 #
 # Usage:
-#   ./testQueries.sh
+#   ./test/testQueries.sh
 #
 # Prerequisites: query server running on localhost:5001 (or edit LOCAL/REMOTE).
 #

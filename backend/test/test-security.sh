@@ -6,9 +6,9 @@
 # and rate limits on /api/query and /api/observe.
 #
 # Usage:
-#   ./test-security.sh
-#   ./test-security.sh http://localhost:5001/api/query
-#   ./test-security.sh https://retrofit-directory.org.uk/retrofit
+#   ./test/test-security.sh
+#   ./test/test-security.sh http://localhost:5001/api/query
+#   ./test/test-security.sh https://retrofit-directory.org.uk/retrofit
 #
 # Default base URL targets the local Node.js service directly (bypasses Apache).
 # Runtime is ~2 minutes (includes a 61s sleep for a clean rate-limit window and

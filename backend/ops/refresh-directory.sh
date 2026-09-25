@@ -2,17 +2,18 @@
 # Rebuild directory.db from a Qualtrics export, verify integrity, optionally deploy.
 #
 # Steps: csvToDB.mjs → postcode→LA match-rate gate → verifyImport.mjs →
-# optional deploy-directory-db.sh.
+# optional ops/deploy-directory-db.sh.
 #
 # Usage (from backend/):
-#   ./refresh-directory.sh path/to/export.xlsx
-#   ./refresh-directory.sh path/to/export.xlsx --deploy
-#   ./refresh-directory.sh path/to/export.xlsx --deploy --min-match-rate 0.90
-#   ./refresh-directory.sh -h
+#   ./ops/refresh-directory.sh path/to/export.xlsx
+#   ./ops/refresh-directory.sh path/to/export.xlsx --deploy
+#   ./ops/refresh-directory.sh path/to/export.xlsx --deploy --min-match-rate 0.90
+#   ./ops/refresh-directory.sh -h
 #
-# Outputs:
+# Outputs (under backend/):
 #   ./directory.db
 #   ./directory.schema
+#   ./directory.schema.canonical
 #
 # Environment:
 #   MIN_MATCH_RATE   Minimum fraction of non-blank HQ postcodes that must resolve
@@ -23,13 +24,12 @@
 # Exits non-zero if import, verify, match-rate gate, or deploy fails.
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-cd "$ROOT"
+OPS_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+BACKEND_ROOT="$(cd "$OPS_ROOT/.." && pwd)"
+cd "$BACKEND_ROOT"
 
 usage() {
-  # Print the leading comment block (everything before set -euo pipefail).
-  # Use absolute path: $0 may be relative and invalid after cd "$ROOT".
-  sed -n '2,/^set -euo pipefail$/p' "$ROOT/$(basename "${BASH_SOURCE[0]}")" | sed '$d' | sed 's/^# \{0,1\}//'
+  sed -n '2,/^set -euo pipefail$/p' "$OPS_ROOT/$(basename "${BASH_SOURCE[0]}")" | sed '$d' | sed 's/^# \{0,1\}//'
   exit 2
 }
 
@@ -73,7 +73,6 @@ if [[ ! -f "$INPUT" ]]; then
   exit 1
 fi
 
-# Resolve to an absolute path before cd-sensitive steps (already in ROOT).
 if [[ "$INPUT" != /* ]]; then
   INPUT="$(cd "$(dirname "$INPUT")" && pwd)/$(basename "$INPUT")"
 fi
@@ -83,7 +82,7 @@ if ! [[ "$MIN_MATCH_RATE" =~ ^0(\.[0-9]+)?$|^1(\.0+)?$ ]]; then
   exit 1
 fi
 
-ONSPD_ZIP="$(ls -1 "$ROOT"/geo/ONSPD_*.zip 2>/dev/null | sort | tail -n 1 || true)"
+ONSPD_ZIP="$(ls -1 "$BACKEND_ROOT"/geo/ONSPD_*.zip 2>/dev/null | sort | tail -n 1 || true)"
 if [[ -z "${ONSPD_ZIP}" && "${SKIP_ONSPD_CHECK:-0}" != "1" ]]; then
   echo "error: no ONSPD zip found under backend/geo/ONSPD_*.zip" >&2
   echo "       Download the free ONS Postcode Directory into backend/geo/ (see backend/geo/README.md)." >&2
@@ -106,7 +105,7 @@ if ! node csvToDB.mjs "$INPUT" 2>&1 | tee "$IMPORT_LOG"; then
   exit 1
 fi
 
-if [[ ! -f "$ROOT/directory.db" ]]; then
+if [[ ! -f "$BACKEND_ROOT/directory.db" ]]; then
   echo "error: directory.db was not created" >&2
   exit 1
 fi
@@ -114,7 +113,7 @@ fi
 echo "==> Postcode match-rate gate (threshold ${MIN_MATCH_RATE})"
 # shellcheck disable=SC2016
 read -r WITH_POSTCODE MATCHED_LA BLANK_POSTCODE < <(
-  sqlite3 -separator ' ' "$ROOT/directory.db" \
+  sqlite3 -separator ' ' "$BACKEND_ROOT/directory.db" \
     "SELECT
        SUM(CASE WHEN postcode IS NOT NULL AND TRIM(postcode) != '' THEN 1 ELSE 0 END),
        SUM(CASE WHEN postcode IS NOT NULL AND TRIM(postcode) != ''
@@ -132,7 +131,6 @@ if [[ "$WITH_POSTCODE" -eq 0 ]]; then
   exit 1
 fi
 
-# Use awk for portable float compare / ratio.
 MATCH_RATE="$(awk -v m="$MATCHED_LA" -v t="$WITH_POSTCODE" 'BEGIN { printf "%.6f", (t > 0 ? m / t : 0) }')"
 PASS="$(awk -v r="$MATCH_RATE" -v min="$MIN_MATCH_RATE" 'BEGIN { print (r + 0 >= min + 0) ? 1 : 0 }')"
 
@@ -152,23 +150,24 @@ fi
 echo "    match-rate gate: PASS"
 
 echo "==> verifyImport.mjs"
-if ! node verifyImport.mjs "$INPUT" "$ROOT/directory.db" "$ROOT/directory.schema"; then
+if ! node verifyImport.mjs "$INPUT" "$BACKEND_ROOT/directory.db" "$BACKEND_ROOT/directory.schema"; then
   echo "error: verifyImport.mjs failed" >&2
   exit 1
 fi
 
 if [[ "$DEPLOY" -eq 1 ]]; then
-  echo "==> deploy-directory-db.sh"
-  if [[ ! -x "$ROOT/deploy-directory-db.sh" ]]; then
-    echo "error: deploy-directory-db.sh missing or not executable" >&2
+  echo "==> ops/deploy-directory-db.sh"
+  if [[ ! -x "$OPS_ROOT/deploy-directory-db.sh" ]]; then
+    echo "error: ops/deploy-directory-db.sh missing or not executable" >&2
     exit 1
   fi
-  "$ROOT/deploy-directory-db.sh"
+  "$OPS_ROOT/deploy-directory-db.sh"
   echo "    deploy: done (restart retrofit-query-server on the host if it does not reload the DB)"
 else
-  echo "==> deploy skipped (pass --deploy to run deploy-directory-db.sh)"
+  echo "==> deploy skipped (pass --deploy to run ops/deploy-directory-db.sh)"
 fi
 
 echo "==> Refresh complete"
-echo "    database: $ROOT/directory.db"
-echo "    schema:   $ROOT/directory.schema"
+echo "    database:  $BACKEND_ROOT/directory.db"
+echo "    schema:    $BACKEND_ROOT/directory.schema"
+echo "    canonical: $BACKEND_ROOT/directory.schema.canonical"

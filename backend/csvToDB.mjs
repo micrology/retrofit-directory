@@ -20,7 +20,7 @@
  *
  * ONSPD: if backend/geo/ONSPD_*.zip (or an extracted ONSPD folder) is present,
  * HQ postcodes are enriched with local_authority, parish, hq_latitude,
- * hq_longitude. Prefer backend/refresh-directory.sh for weekly imports
+ * hq_longitude. Prefer backend/ops/refresh-directory.sh for weekly imports
  * (import + match-rate gate + verify + optional deploy).
  *
  * @license MIT
@@ -28,9 +28,7 @@
  * University of Surrey — INHABIT / National Retrofit Hub
  */
 
-import fs from 'node:fs'
 import path from 'node:path'
-import { fileURLToPath } from 'node:url'
 import { parse } from 'csv-parse/sync'
 import sqlite3 from 'sqlite3'
 import XLSX from 'xlsx'
@@ -39,19 +37,24 @@ import {
   applyPostcodeEnrichment,
   enrichPostcodesFromOnspd,
   findOnspdSource,
-} from './geoPostcodes.mjs'
+} from './lib/geoPostcodes.mjs'
+import {
+  CANONICAL_SCHEMA_PATH,
+  SCHEMA_PATH,
+  TABLE_NAME,
+  findColumnByTokens,
+  quoteIdentifier,
+  recreateOrgsLlmView,
+  writeSchemaFiles,
+} from './lib/orgsLlmView.mjs'
 
 const INPUT_PATH = process.argv[2] || '../directory.csv'
 const DB_PATH = 'directory.db'
-const SCHEMA_PATH = path.join(path.dirname(fileURLToPath(import.meta.url)), 'directory.schema')
-const TABLE_NAME = 'orgs'
-const LLM_VIEW_NAME = 'orgs_llm'
 const HEADER_ROW_INDEX = 1
 // Optional 0-based source row indexes to drop before header/data split (e.g. extra label rows).
 const SKIP_ROWS = new Set()
 // Spreadsheet columns A–S (0–18) are survey-respondent metadata, not answers.
 const FIRST_DATA_COLUMN_INDEX = 19 // column T onwards
-const SCHEMA_EXAMPLE_LIMIT = 3
 
 /**
  * Normalise free text: embedded newlines → spaces, collapse runs of whitespace,
@@ -122,27 +125,6 @@ function isColumnEmpty(dataRows, colIdx) {
 }
 
 /**
- * Normalize text for fuzzy semantic token matching.
- * @param {string} value
- * @returns {string}
- */
-function normalizeForMatch(value) {
-  return String(value)
-    .toLowerCase()
-    .replace(/[_\s]+/g, ' ')
-    .replace(/[^a-z0-9 ]/g, '')
-    .replace(/\s+/g, ' ')
-    .trim()
-}
-/**
- * Safely quote a SQLite identifier (e.g. table/column name).
- * @param {unknown} identifier
- * @returns {string}
- */
-function quoteIdentifier(identifier) {
-  return `"${String(identifier).replace(/"/g, '""')}"`
-}
-/**
  * Promise-based wrapper around sqlite3 `db.run`.
  * @param {sqlite3.Database} db
  * @param {string} sql
@@ -194,65 +176,6 @@ function close(db) {
       resolve()
     })
   })
-}
-
-/**
- * Read table and column metadata and format it as a human-readable schema.
- * @param {sqlite3.Database} db
- * @returns {Promise<string>}
- */
-async function getDatabaseSchema(db) {
-  const tables = await all(
-    db,
-    "SELECT name, type FROM sqlite_master WHERE type IN ('table', 'view') ORDER BY CASE WHEN type='table' THEN 0 ELSE 1 END, name;"
-  )
-  const schemaLines = []
-
-  for (const table of tables) {
-    const tableName = table.name
-    const objectType = table.type
-    schemaLines.push(`${objectType === 'view' ? 'View name' : 'Table name'}: ${tableName}`)
-    schemaLines.push('Columns:')
-
-    const safeTableName = tableName.replace(/'/g, "''")
-    const columns = await all(db, `PRAGMA table_info('${safeTableName}');`)
-    const [{ row_count: rowCount }] = await all(
-      db,
-      `SELECT COUNT(*) AS row_count FROM ${quoteIdentifier(tableName)}`
-    )
-
-    for (const col of columns) {
-      const colType = col.type || 'TEXT'
-      const quotedCol = quoteIdentifier(col.name)
-      const [{ populated_count: populatedCount }] = await all(
-        db,
-        `SELECT COUNT(*) AS populated_count FROM ${quoteIdentifier(tableName)} WHERE ${quotedCol} IS NOT NULL AND TRIM(CAST(${quotedCol} AS TEXT)) != ''`
-      )
-
-      if (!populatedCount) {
-        schemaLines.push(`  - ${col.name} (${colType}) [EMPTY - no data]`)
-        continue
-      }
-
-      const examples = await all(
-        db,
-        `SELECT DISTINCT TRIM(CAST(${quotedCol} AS TEXT)) AS example_value FROM ${quoteIdentifier(tableName)} WHERE ${quotedCol} IS NOT NULL AND TRIM(CAST(${quotedCol} AS TEXT)) != '' ORDER BY LENGTH(TRIM(CAST(${quotedCol} AS TEXT))) ASC, TRIM(CAST(${quotedCol} AS TEXT)) ASC LIMIT ${SCHEMA_EXAMPLE_LIMIT}`
-      )
-      const formattedExamples = examples
-        .map(
-          ({ example_value: value }) =>
-            `"${String(value).replace(/\s+/g, ' ').trim().slice(0, 80).replace(/"/g, "'")}"`
-        )
-        .join(', ')
-      schemaLines.push(
-        `  - ${col.name} (${colType}) [populated ${populatedCount}/${rowCount}] examples: ${formattedExamples}`
-      )
-    }
-
-    schemaLines.push('')
-  }
-
-  return schemaLines.join('\n')
 }
 
 /**
@@ -397,70 +320,6 @@ function loadRowsFromInput(inputPath) {
 }
 
 /**
- * Find the first matching column by semantic tokens.
- * @param {string[]} columns
- * @param {string[]} requiredTokens
- * @returns {string | null}
- */
-function findColumnByTokens(columns, requiredTokens) {
-  for (const column of columns) {
-    const normalized = normalizeForMatch(column)
-    if (requiredTokens.every((token) => normalized.includes(token))) {
-      return column
-    }
-  }
-  return null
-}
-
-/**
- * Build canonical alias mappings for the LLM-facing SQL view.
- * @param {string[]} columns
- * @returns {Array<{ alias: string, source: string }>}
- */
-function buildLlmViewMappings(columns) {
-  const mappings = []
-  /**
-   * Register an alias if a source column matching `tokens` exists.
-   * @param {string} alias
-   * @param {string[]} tokens
-   * @returns {void}
-   */
-  const addMapping = (alias, tokens) => {
-    const source = findColumnByTokens(columns, tokens)
-    if (source) mappings.push({ alias, source })
-  }
-
-  addMapping('org_name', ['name', 'organisation', 'wish', 'add', 'directory'])
-  addMapping('org_main_type', ['main', 'type', 'selected', 'choice'])
-  addMapping('county', ['ukbased', 'county', 'based'])
-  addMapping('postcode', ['postcode', 'organisation', 'headquarters'])
-  // Derived HQ place fields (added by ONSPD enrichment; identity-mapped when present).
-  for (const { name } of ENRICHMENT_COLUMNS) {
-    if (columns.includes(name)) mappings.push({ alias: name, source: name })
-  }
-  addMapping('geographic_scope', ['geographic', 'scope', 'cover'])
-  addMapping('operating_areas', ['geographic', 'areas', 'operating', 'selected', 'choice'])
-  addMapping('main_mission_or_remit', ['main', 'mission', 'remit', 'organisation'])
-  addMapping('retrofit_relevance', ['work', 'relevant', 'retrofit'])
-  addMapping('primary_activity', ['primary', 'activity', 'selected', 'choice'])
-  addMapping('other_activities', ['other', 'activities', 'carry', 'out', 'selected', 'choice'])
-  addMapping('specialisms', ['areas', 'specialism', 'selected', 'choice'])
-  addMapping('methods_or_skills', ['methods', 'technical', 'skills', 'selected', 'choice'])
-  addMapping('works_with_architects', [
-    'work',
-    'with',
-    'architects',
-    'engineers',
-    'design',
-    'professionals',
-  ])
-  addMapping('website', ['link', 'organisation', 'website', 'web', 'page'])
-  addMapping('contact_email', ['general', 'contact', 'email', 'organisation'])
-  addMapping('employee_count_band', ['approximately', 'employees', 'organisation', 'have'])
-
-  return mappings
-}
-/**
  * Parse CSV data, recreate the SQLite table, insert rows and write schema.
  * @returns {Promise<void>}
  */
@@ -566,25 +425,13 @@ async function main() {
       console.warn('No headquarters postcode column found; skipping place enrichment.')
     }
 
-    const viewMappings = buildLlmViewMappings(enrichedColumns)
-    if (viewMappings.length > 0) {
-      await run(db, `DROP VIEW IF EXISTS ${quoteIdentifier(LLM_VIEW_NAME)}`)
-      const viewSelect = viewMappings
-        .map(({ alias, source }) => `${quoteIdentifier(source)} AS ${quoteIdentifier(alias)}`)
-        .join(',\n      ')
-      await run(
-        db,
-        `CREATE VIEW ${quoteIdentifier(LLM_VIEW_NAME)} AS
-         SELECT
-           ${viewSelect}
-         FROM ${quoteIdentifier(TABLE_NAME)}`
-      )
-    }
-    const extractedSchema = await getDatabaseSchema(db)
-    fs.writeFileSync(SCHEMA_PATH, extractedSchema, 'utf8')
+    const viewMappings = await recreateOrgsLlmView(db, { run, all })
+    await writeSchemaFiles(db, { all })
     console.log(`Input file: ${INPUT_PATH}`)
     console.log(`Database written to ${DB_PATH}`)
-    console.log(`Schema written to ${SCHEMA_PATH}`)
+    console.log(`orgs_llm aliases: ${viewMappings.length}`)
+    console.log(`Full schema: ${SCHEMA_PATH}`)
+    console.log(`Canonical schema: ${CANONICAL_SCHEMA_PATH}`)
   } finally {
     await close(db)
   }

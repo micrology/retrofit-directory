@@ -6,8 +6,8 @@
  * coordinates already live in `directory.db`.
  *
  * Library module (not a CLI). Used by:
- *   proximity.mjs          — near/nearest answers in the query server
- *   test-proximity.mjs     — offline unit tests
+ *   lib/proximity.mjs       — near/nearest answers in the query server
+ *   test/test-proximity.mjs — offline unit tests
  *
  * Disk cache: backend/geo/geocode-cache.json (created on first network hit).
  *
@@ -28,7 +28,8 @@ import { fileURLToPath } from 'node:url'
  */
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
-const GEO_DIR = path.join(__dirname, 'geo')
+const BACKEND_ROOT = path.join(__dirname, '..')
+const GEO_DIR = path.join(BACKEND_ROOT, 'geo')
 const CACHE_PATH = path.join(GEO_DIR, 'geocode-cache.json')
 const POSTCODES_IO_BASE = 'https://api.postcodes.io'
 const FETCH_TIMEOUT_MS = 8_000

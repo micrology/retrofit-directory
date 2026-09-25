@@ -1,4 +1,19 @@
 {
+  "name": "retrofit-directory-backend",
+  "private": true,
+  "type": "module",
+  "description": "Searchable UK housing-retrofit organisation directory (INHABIT / National Retrofit Hub)",
+  "license": "MIT",
+  "scripts": {
+    "start": "node query.mjs",
+    "import": "node csvToDB.mjs",
+    "rebuild-view": "node rebuild-orgs-llm.mjs",
+    "test": "npm run test:offline",
+    "test:offline": "node test/test-validate-sql.mjs && node test/test-proximity.mjs",
+    "test:security": "bash test/test-security.sh",
+    "refresh": "bash ops/refresh-directory.sh",
+    "deploy-db": "bash ops/deploy-directory-db.sh"
+  },
   "dependencies": {
     "@aws-sdk/client-bedrock-agent-runtime": "^3.1107.0",
     "@aws-sdk/client-bedrock-runtime": "^3.1095.0",
@@ -9,7 +24,5 @@
     "http-terminator": "^3.2.0",
     "sqlite3": "^6.0.1",
     "xlsx": "^0.18.5"
-  },
-  "license": "MIT",
-  "description": "Searchable UK housing-retrofit organisation directory (INHABIT / National Retrofit Hub)"
+  }
 }
