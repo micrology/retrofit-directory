@@ -37,6 +37,7 @@ import {
   applyPostcodeEnrichment,
   enrichPostcodesFromOnspd,
   findOnspdSource,
+  isMissingPostcode,
 } from './lib/geoPostcodes.mjs'
 import {
   CANONICAL_SCHEMA_PATH,
@@ -378,13 +379,26 @@ async function main() {
       .map(quoteIdentifier)
       .join(', ')}) VALUES (${cleanedColumns.map(() => '?').join(', ')})`
 
+    // HQ postcode column: placeholders such as N/A mean “no postcode” → store NULL.
+    const postcodeColumn = findColumnByTokens(cleanedColumns, ['postcode', 'organisation', 'headquarters'])
+    const postcodeColIdx = postcodeColumn ? cleanedColumns.indexOf(postcodeColumn) : -1
+    let blankedMissingPostcodes = 0
+
     for (const row of normalizedDataRows) {
       const normalizedRow = keptColumnIndexes.map((sourceIdx) => normalizeCellValue(row[sourceIdx]))
+      if (postcodeColIdx >= 0 && isMissingPostcode(normalizedRow[postcodeColIdx])) {
+        if (normalizedRow[postcodeColIdx] != null) blankedMissingPostcodes += 1
+        normalizedRow[postcodeColIdx] = null
+      }
       await run(db, insertSql, normalizedRow)
+    }
+    if (blankedMissingPostcodes > 0) {
+      console.log(
+        `HQ postcode: blanked ${blankedMissingPostcodes} missing/placeholder value(s) (e.g. N/A) as NULL`
+      )
     }
 
     // HQ place enrichment from local ONSPD (weekly-safe: all postcodes in this export).
-    const postcodeColumn = findColumnByTokens(cleanedColumns, ['postcode', 'organisation', 'headquarters'])
     let enrichedColumns = [...cleanedColumns]
     if (postcodeColumn) {
       const postcodes = (

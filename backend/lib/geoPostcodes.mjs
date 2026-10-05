@@ -46,12 +46,27 @@ export const ENRICHMENT_COLUMNS = [
 ]
 
 /**
+ * True when a survey postcode cell is blank or a known “no postcode” placeholder
+ * (distributed orgs often enter `N/A`).
+ * @param {unknown} value
+ * @returns {boolean}
+ */
+export function isMissingPostcode(value) {
+  if (value === undefined || value === null) return true
+  const trimmed = String(value).trim()
+  if (!trimmed) return true
+  // Survey placeholders for “no headquarters postcode” (not a UK outward code).
+  return /^(n\/?a|n\.?\s*a\.?|none|null|nil|unknown|not\s+applicable|-|–|—|\.+$)$/i.test(trimmed)
+}
+
+/**
  * Compact postcode key: uppercase, no spaces (e.g. RG404PZ).
+ * Placeholders such as `N/A` are treated as missing (no location match).
  * @param {unknown} value
  * @returns {string | null}
  */
 export function compactPostcode(value) {
-  if (value === undefined || value === null) return null
+  if (isMissingPostcode(value)) return null
   const compact = String(value)
     .toUpperCase()
     .replace(/[^A-Z0-9]/g, '')

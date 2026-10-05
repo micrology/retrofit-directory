@@ -27,6 +27,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import sqlite3 from "sqlite3";
 import XLSX from "xlsx";
+import { isMissingPostcode } from "./lib/geoPostcodes.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const INPUT_PATH = process.argv[2] || path.join(__dirname, "../directory.csv");
@@ -478,8 +479,16 @@ async function main() {
     return cleaned || `column_${colIdx + 1}`;
   });
 
+  // Keep in sync with csvToDB.mjs: N/A (and similar) HQ postcodes become NULL.
+  const postcodeColumn = findColumnByTokens(cleanedColumns, ["postcode", "organisation", "headquarters"]);
+  const postcodeColIdx = postcodeColumn ? cleanedColumns.indexOf(postcodeColumn) : -1;
+
   const expectedRows = normalizedDataRows.map((row) =>
-    keptColumnIndexes.map((sourceIdx) => normalizeCellValue(row[sourceIdx]))
+    keptColumnIndexes.map((sourceIdx, colIdx) => {
+      const value = normalizeCellValue(row[sourceIdx]);
+      if (colIdx === postcodeColIdx && isMissingPostcode(value)) return null;
+      return value;
+    })
   );
 
   console.log(
