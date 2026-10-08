@@ -64,7 +64,8 @@ const CANONICAL_SCHEMA_PATH = path.join(
   'directory.schema.canonical'
 )
 const BEDROCK_REGION = 'eu-west-2'
-const BEDROCK_MODEL_ID = 'eu.anthropic.claude-haiku-4-5-20251001-v1:0'
+/** EU geo inference profile for Claude Haiku 5.5 (no in-region foundation-model id on bedrock-runtime). */
+const BEDROCK_MODEL_ID = 'eu.anthropic.claude-haiku-5-5'
 const CHEAP_MODEL_ID = 'qwen.qwen3-235b-a22b-2507-v1:0'
 /** Unstructured policy corpus (S3-backed Bedrock Knowledge Base). */
 const KNOWLEDGE_BASE_ID = 'U8L4ZLT14K'
@@ -73,6 +74,49 @@ const KNOWLEDGE_BASE_ID = 'U8L4ZLT14K'
  * ids (eu.anthropic...) are accepted as the modelArn value in recent Agents Runtime APIs.
  */
 const KB_GENERATION_MODEL_ARN = BEDROCK_MODEL_ID
+/**
+ * Haiku 5.5 rejects `temperature` and enables adaptive thinking by default.
+ * With small maxTokens budgets (e.g. route=20), thinking can consume the whole
+ * budget and return only reasoningContent — which this server treats as empty.
+ */
+const HAIKU_55_MODEL_RE = /claude-haiku-5-5/i
+/** Generation prompt for policy RAG. $output_format_instructions$ keeps citations. */
+const KB_GENERATION_PROMPT_TEMPLATE = `You are a helpful assistant for UK housing retrofit policy and guidance.
+Use only the search results to answer the user's question.
+If the search results do not contain enough information, say you could not find relevant information in the policy documents rather than guessing.
+Do not invent organisation directory facts (names, counts, contacts) that are not in the search results.
+Be clear and concise. Prefer UK terminology. Mention document titles when they help the user verify the answer.
+
+Formatting:
+- When the answer lists schemes, grants, eligibility criteria, obligations, options, or several distinct points, use a short Markdown bullet list.
+- Lead with one summary sentence, then bullets; keep each bullet to one or two short sentences.
+- Prefer bullets over long paragraphs for multi-item answers. Use a short paragraph only for a single simple fact or a yes/no-style answer.
+- Do not pad with extra commentary, preambles, or repeated caveats.
+
+Here are the search results in numbered order:
+$search_results$
+
+Here is the user's question:
+$query$
+
+$output_format_instructions$
+`
+/**
+ * Orchestration (query rewrite) prompt required by Haiku 5.5 RetrieveAndGenerate.
+ * Must include $query$ (and typically $conversation_history$ / $output_format_instructions$).
+ */
+const KB_ORCHESTRATION_PROMPT_TEMPLATE = `You are a query generation agent for a UK housing retrofit policy knowledge base.
+Given conversation history and the latest user question, create a search query to find relevant policy documents.
+Do not answer the question yourself.
+
+Here is the conversation history:
+$conversation_history$
+
+Here is the user's question:
+$query$
+
+$output_format_instructions$
+`
 const SQL_MAX_TOKENS = 300
 const ANSWER_MAX_TOKENS = 2000
 const REFORMULATE_MAX_TOKENS = 120
@@ -352,11 +396,31 @@ function readSchema(mode = 'canonical') {
  */
 async function invokeBedrock(prompt, temperature, maxTokens, options = {}) {
   const { modelId = BEDROCK_MODEL_ID, stage = 'unknown' } = options
+  /** @type {import('@aws-sdk/client-bedrock-runtime').InferenceConfiguration} */
+  const inferenceConfig = { maxTokens }
+  /** @type {Record<string, unknown> | undefined} */
+  let additionalModelRequestFields
+
+  if (HAIKU_55_MODEL_RE.test(modelId)) {
+    // Map former temperature intent onto Haiku 5.5 effort; keep thinking off so
+    // tight maxTokens caps still return text rather than reasoning-only output.
+    const effort = typeof temperature === 'number' && temperature > 0 ? 'medium' : 'low'
+    additionalModelRequestFields = {
+      thinking: { type: 'disabled' },
+      output_config: { effort },
+    }
+  } else if (typeof temperature === 'number') {
+    inferenceConfig.temperature = temperature
+  }
+
   const response = await bedrock.send(
     new ConverseCommand({
       modelId,
       messages: [{ role: 'user', content: [{ text: prompt }] }],
-      inferenceConfig: { maxTokens, temperature },
+      inferenceConfig,
+      ...(additionalModelRequestFields
+        ? { additionalModelRequestFields }
+        : {}),
     })
   )
 
@@ -1134,6 +1198,16 @@ function sourcesFromKbCitations(response) {
  * @returns {Promise<{ answer: string, sources: { name: string, url: string }[], noHit: boolean }>}
  */
 async function answerFromKnowledgeBase(userQuery) {
+  // Haiku 5.5 requires custom orchestration + generation templates (both with $query$)
+  // and rejects temperature. Keep thinking off / low effort for latency and cost.
+  const haiku55KbFields = HAIKU_55_MODEL_RE.test(KB_GENERATION_MODEL_ARN)
+    ? {
+        additionalModelRequestFields: {
+          thinking: { type: 'disabled' },
+          output_config: { effort: 'low' },
+        },
+      }
+    : {}
   const response = await bedrockAgent.send(
     new RetrieveAndGenerateCommand({
       input: { text: userQuery },
@@ -1147,36 +1221,24 @@ async function answerFromKnowledgeBase(userQuery) {
               numberOfResults: 6,
             },
           },
+          orchestrationConfiguration: {
+            promptTemplate: {
+              textPromptTemplate: KB_ORCHESTRATION_PROMPT_TEMPLATE,
+            },
+            ...haiku55KbFields,
+          },
           generationConfiguration: {
             inferenceConfig: {
               textInferenceConfig: {
-                temperature: 0.2,
+                // temperature omitted: deprecated on Haiku 5.5
                 maxTokens: ANSWER_MAX_TOKENS,
               },
             },
             promptTemplate: {
               // $output_format_instructions$ is required for Bedrock to attach citations.
-              textPromptTemplate: `You are a helpful assistant for UK housing retrofit policy and guidance.
-Use only the search results to answer the user's question.
-If the search results do not contain enough information, say you could not find relevant information in the policy documents rather than guessing.
-Do not invent organisation directory facts (names, counts, contacts) that are not in the search results.
-Be clear and concise. Prefer UK terminology. Mention document titles when they help the user verify the answer.
-
-Formatting:
-- When the answer lists schemes, grants, eligibility criteria, obligations, options, or several distinct points, use a short Markdown bullet list.
-- Lead with one summary sentence, then bullets; keep each bullet to one or two short sentences.
-- Prefer bullets over long paragraphs for multi-item answers. Use a short paragraph only for a single simple fact or a yes/no-style answer.
-- Do not pad with extra commentary, preambles, or repeated caveats.
-
-Here are the search results in numbered order:
-$search_results$
-
-Here is the user's question:
-$query$
-
-$output_format_instructions$
-`,
+              textPromptTemplate: KB_GENERATION_PROMPT_TEMPLATE,
             },
+            ...haiku55KbFields,
           },
         },
       },

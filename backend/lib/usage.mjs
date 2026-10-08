@@ -46,7 +46,13 @@ const USAGE_DB_PATH = path.join(path.dirname(fileURLToPath(import.meta.url)), '.
  * See https://aws.amazon.com/bedrock/pricing/
  */
 const MODEL_RATES_USD_PER_MTOK = {
+  // Historical: kept so older usage.db rows still estimate correctly.
   'eu.anthropic.claude-haiku-4-5-20251001-v1:0': { input: 1.1, output: 5.5 },
+  // Haiku 5.5 base rate for prompts ≤100k tokens (our prompts are well under).
+  // Above 100k input the Bedrock rate steps up to $0.50 / $2.50 — not modelled here.
+  'eu.anthropic.claude-haiku-5-5': { input: 0.1, output: 0.5 },
+  'anthropic.claude-haiku-5-5': { input: 0.1, output: 0.5 },
+  'global.anthropic.claude-haiku-5-5': { input: 0.1, output: 0.5 },
   'qwen.qwen3-235b-a22b-2507-v1:0': { input: 0.34, output: 1.37 },
 }
 const FALLBACK_RATE_USD_PER_MTOK = { input: 0, output: 0 }

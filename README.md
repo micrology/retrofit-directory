@@ -70,7 +70,7 @@ Typical local measurements after these changes: many directory questions complet
 
 - Node.js ≥ 18
 - AWS credentials in `eu-west-2` with:
-  - `bedrock:InvokeModel` for `eu.anthropic.claude-haiku-4-5-20251001-v1:0`
+  - `bedrock:InvokeModel` for `eu.anthropic.claude-haiku-5-5`
     (and the Qwen model used for multi-turn reformulation)
   - `bedrock:Retrieve` and `bedrock:RetrieveAndGenerate` on the configured
     knowledge base
