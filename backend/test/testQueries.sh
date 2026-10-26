@@ -26,6 +26,14 @@ curl -H "Content-Type: application/json" -X POST \
   -d '{"messages":[{"role":"user","content":[{"query":"Is there an architect in the database that is located in Hampshire?  If so, what is its name?"}]}]}' \
   $LOCAL
 echo
+curl -H "Content-Type: application/json" -X POST \
+  -d '{"messages":[{"role":"user","content":[{"query":"I am considering retrofitting my house in Woodside Park. How do I do this?"}]}]}' \
+  $LOCAL
+echo
+curl -H "Content-Type: application/json" -X POST \
+  -d '{"messages":[{"role":"user","content":[{"query":"How do I start retrofitting my home?"}]}]}' \
+  $LOCAL
+echo
 
 echo '== multi-turn history: only the last message is answered (local) =='
 curl -H "Content-Type: application/json" -X POST \

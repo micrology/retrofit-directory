@@ -15,9 +15,10 @@ import DOMPurify from 'https://cdn.jsdelivr.net/npm/dompurify@3.4.12/+esm'
 import 'https://cdn.jsdelivr.net/npm/@knadh/oat@0.7.1/oat.min.js'
 
 const SUGGESTION_PROMPTS = [
-  "What is 'retrofit'?",
-  'How many organisations related to retrofit are located in Bristol?',
-  'Is there an architect near Portsmouth?',
+  'What is retrofit?',
+  'What are the benefits of retrofitting?',
+  'How do I retrofit my home?',
+  'Which organisations are in Bristol?',
   'What is PAS2035?',
 ]
 

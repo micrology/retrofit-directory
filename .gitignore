@@ -73,9 +73,11 @@ backend/geo/geocode-cache.json
 # Notes
 notes/
 
-# Policy corpus bulk files (keep README only)
+# Policy corpus bulk files (keep README + curated homeowner starter pack)
 backend/Policies/**
 !backend/Policies/
 !backend/Policies/README.md
+!backend/Policies/homeowner-retrofit-starter.md
+!backend/Policies/homeowner-retrofit-starter.md.metadata.json
 backend/gen-metadata/document-index.txt
 

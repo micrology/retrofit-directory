@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="The Retrofit Directory">
+  <rect width="32" height="32" rx="7" ry="7" fill="#1a4731"/>
+  <path fill="none" stroke="#ffffff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"
+        d="M7 13 L16 6 L25 13 V24 a2 2 0 0 1 -2 2 H9 a2 2 0 0 1 -2 -2 Z"/>
+  <path fill="none" stroke="#ffffff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"
+        d="M13 26 V16 H19 V26"/>
+</svg>
