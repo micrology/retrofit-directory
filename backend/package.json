@@ -9,7 +9,7 @@
     "import": "node csvToDB.mjs",
     "rebuild-view": "node rebuild-orgs-llm.mjs",
     "test": "npm run test:offline",
-    "test:offline": "node test/test-validate-sql.mjs && node test/test-proximity.mjs",
+    "test:offline": "node test/test-validate-sql.mjs && node test/test-proximity.mjs && node test/test-intent.mjs",
     "test:security": "bash test/test-security.sh",
     "refresh": "bash ops/refresh-directory.sh",
     "deploy-db": "bash ops/deploy-directory-db.sh"

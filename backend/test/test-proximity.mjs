@@ -124,6 +124,18 @@ function check(label, cond) {
   const fallthrough = await tryAnswerProximityQuery('How many organisations are in Bristol?', DB_PATH)
   check('non-proximity falls through', fallthrough.handled === false)
 
+  const closest = await tryAnswerProximityQuery('organisations near Reading', DB_PATH, {
+    limit: 3,
+    closestOnly: true,
+  })
+  check('closestOnly handled', closest.handled === true && closest.rowCount === 3)
+  check(
+    'closestOnly header matches count',
+    /The closest 3 organisations/i.test(closest.answer) &&
+      !/There are \d+ organisations/i.test(closest.answer)
+  )
+  check('closestOnly lists 3 bullets', (closest.answer.match(/^- /gm) || []).length === 3)
+
   const nearMeAnswer = await tryAnswerProximityQuery('Is there an architect near me', DB_PATH)
   check('near me is handled', nearMeAnswer.handled === true)
   check('near me asks for location', /postcode|town or city/i.test(nearMeAnswer.answer))

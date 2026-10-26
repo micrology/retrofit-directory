@@ -81,14 +81,21 @@ const KB_GENERATION_MODEL_ARN = BEDROCK_MODEL_ID
  */
 const HAIKU_55_MODEL_RE = /claude-haiku-5-5/i
 /** Generation prompt for policy RAG. $output_format_instructions$ keeps citations. */
-const KB_GENERATION_PROMPT_TEMPLATE = `You are a helpful assistant for UK housing retrofit policy and guidance.
+const KB_GENERATION_PROMPT_TEMPLATE = `You are a helpful assistant for UK housing retrofit policy and homeowner guidance.
 Use only the search results to answer the user's question.
-If the search results do not contain enough information, say you could not find relevant information in the policy documents rather than guessing.
+If the search results do not contain enough information on the core question, say so briefly rather than guessing detailed rules or figures.
 Do not invent organisation directory facts (names, counts, contacts) that are not in the search results.
+Do not invent local-authority schemes, grant amounts, or eligibility rules that are not in the search results.
 Be clear and concise. Prefer UK terminology. Mention document titles when they help the user verify the answer.
 
+Homeowner / "how do I retrofit" questions:
+- Answer as a short staged plan when the user asks how to start or what to do: (1) understand the home (EPC / impartial advice), (2) fabric first (insulation, draughts) with ventilation, (3) low-carbon heat and renewables where appropriate, (4) check funding, (5) use accredited installers (TrustMark / MCS) and consider a retrofit assessor or coordinator for deeper works.
+- Funding step: if the search results mention national schemes (for example Boiler Upgrade Scheme, Warm Homes Local Grant, ECO / Energy Company Obligation, Help to Heat, Warm Homes Plan), summarise what they cover from those results. If scheme detail is thin or absent in the results, say that national grants and schemes may be available and the user can ask about a named scheme (e.g. Boiler Upgrade Scheme) or check GOV.UK — do NOT claim that the policy documents lack those schemes, and do NOT list missing scheme names as “not found”.
+- If a place name appears, you may note that local council support varies; only describe place-specific schemes that appear in the search results. Do not invent neighbourhood-level programmes.
+- State once that this is general guidance, not a property-specific design or survey. Do not pad with repeated “could not find” caveats.
+
 Formatting:
-- When the answer lists schemes, grants, eligibility criteria, obligations, options, or several distinct points, use a short Markdown bullet list.
+- When the answer lists schemes, grants, eligibility criteria, obligations, options, steps, or several distinct points, use a short Markdown bullet list.
 - Lead with one summary sentence, then bullets; keep each bullet to one or two short sentences.
 - Prefer bullets over long paragraphs for multi-item answers. Use a short paragraph only for a single simple fact or a yes/no-style answer.
 - Do not pad with extra commentary, preambles, or repeated caveats.
@@ -108,6 +115,7 @@ $output_format_instructions$
 const KB_ORCHESTRATION_PROMPT_TEMPLATE = `You are a query generation agent for a UK housing retrofit policy knowledge base.
 Given conversation history and the latest user question, create a search query to find relevant policy documents.
 Do not answer the question yourself.
+If the user asks how to retrofit a home or where to start, include terms for homeowner guidance, fabric-first retrofit steps, TrustMark or MCS installers, and national funding schemes such as Boiler Upgrade Scheme, Warm Homes Local Grant, ECO, and Help to Heat — not only the place name.
 
 Here is the conversation history:
 $conversation_history$
@@ -201,9 +209,14 @@ const CANONICAL_LLM_COLUMNS = [
   'employee_count_band',
 ]
 const OUT_OF_SCOPE_RESPONSE =
-  'I can answer questions about organisations in the Retrofit Directory (locations, activities, specialisms, types, and contacts) and about UK retrofit policy, regulations, and guidance from the uploaded policy documents. Please ask about one of those topics.'
+  'I can help with organisations in the Retrofit Directory and with UK home retrofit guidance (how to start, schemes and grants, standards, and policy). Try questions such as “How do I start retrofitting my home?”, “What grants are available in England?”, or “Which organisations are near Barnet?”.'
 const POLICY_NO_HIT_RESPONSE =
-  'I could not find relevant information in the retrofit policy documents for that question. Try rephrasing, or ask about a specific scheme, strategy, or regulation (for example ECO, Green Deal, fuel poverty, or heat and buildings policy).'
+  'I could not find relevant information in the retrofit policy documents for that question. Try rephrasing, or ask about starting a home retrofit, a specific scheme or grant (for example ECO, Boiler Upgrade Scheme, Warm Homes), or a named strategy or standard (for example PAS 2035).'
+/** Places too broad or non-local for a secondary nearby-organisations search. */
+const GENERIC_PLACE_HINT =
+  /^(?:the\s+)?(?:uk|u\.k\.|united kingdom|great britain|britain|england|scotland|wales|northern ireland|europe|london)$/i
+/** Max orgs to append when a homeowner/policy question also names a place. */
+const HOMEOWNER_NEARBY_ORG_LIMIT = 8
 
 class UnsafeSqlError extends Error {
   /**
@@ -946,7 +959,7 @@ async function reformulateUserQueryToIncludePreviousContext(messages, lastUserMe
 
     The assistant can answer two kinds of questions:
     (1) lookups in a directory of UK retrofit organisations, and
-    (2) questions about UK retrofit policy, regulations, schemes, and guidance documents.
+    (2) questions about UK retrofit policy, regulations, schemes, guidance documents, and practical homeowner “how do I retrofit my home” guidance.
 
     Rules:
     - Resolve pronouns and elliptical references (e.g. "and in Manchester?" or "what does that strategy say about ECO?") using the conversation below.
@@ -983,6 +996,113 @@ async function reformulateUserQueryToIncludePreviousContext(messages, lastUserMe
 }
 
 /**
+ * True when the user is asking how to start or carry out a domestic retrofit,
+ * rather than only looking up a named organisation or a pure trivia topic.
+ * @param {string} userQuery
+ * @returns {boolean}
+ */
+export function isHomeownerJourneyQuery(userQuery) {
+  const q = String(userQuery || '')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim()
+  if (!q) return false
+
+  // Explicit retrofit / home-upgrade phrasing.
+  if (
+    /\bhow to (?:retrofit|insulate|improve|upgrade|start)\b/.test(q) ||
+    /\bstart(?:ing)? (?:a |my |our )?(?:home )?retrofit\b/.test(q) ||
+    /\bretrofit(?:ting)? my (?:home|house|property|flat)\b/.test(q) ||
+    /\b(?:considering|planning|want to|looking to) retrofit/.test(q) ||
+    /\bmake my (?:home|house|property) (?:warmer|more energy|energy[- ]efficient)\b/.test(q) ||
+    /\bwhole[- ]house (?:plan|retrofit|approach)\b/.test(q) ||
+    /\bbegin(?:ning)? (?:my |our |a )?retrofit\b/.test(q)
+  ) {
+    return true
+  }
+
+  // Generic how-to / where-do-I-start only counts with home-energy context
+  // (avoids “how do I cook …” being treated as retrofit guidance).
+  const howTo =
+    /\bhow (?:do|can|should) i\b/.test(q) ||
+    /\bwhere do i start\b/.test(q) ||
+    /\bgetting started\b/.test(q) ||
+    /\bwhat should i do first\b/.test(q)
+  if (!howTo) return false
+
+  return /\b(retrofit|insulat|heat pump|epc\b|draught|energy efficien|warm(?:er)? (?:home|house)|my (?:home|house|property|flat)|pas\s*2035|loft insulation|solid wall|cavity wall|boiler upgrade|warm homes)\b/.test(
+    q
+  )
+}
+
+/**
+ * Extract a local place name from homeowner/policy questions (e.g. Woodside Park).
+ * Returns null for missing, tiny, or nation-scale places.
+ * @param {string} userQuery
+ * @returns {string | null}
+ */
+export function extractPlaceHint(userQuery) {
+  const raw = String(userQuery || '').replace(/\s+/g, ' ').trim()
+  if (!raw) return null
+
+  const patterns = [
+    /\b(?:my|our)\s+(?:house|home|property|flat|bungalow)\s+in\s+(.+?)(?:\s*[?.!,;:]|$)/i,
+    /\b(?:house|home|property|flat)\s+in\s+(.+?)(?:\s*[?.!,;:]|$)/i,
+    /\b(?:live|living|based|located|situated)\s+in\s+(.+?)(?:\s*[?.!,;:]|$)/i,
+    /\b(?:near|around|in)\s+(.+?)(?:\s*[?.!,;:]|$)/i,
+  ]
+
+  for (const pattern of patterns) {
+    const match = raw.match(pattern)
+    if (!match?.[1]) continue
+    let place = match[1].trim()
+    place = place
+      .replace(
+        /\b(?:how do i.*|please|thanks|thank you|in the (?:uk|united kingdom)|england|scotland|wales)\b.*$/i,
+        ''
+      )
+      .replace(/[?.!,;:"']+$/g, '')
+      .replace(
+        /^(?:the\s+town\s+of|the\s+city\s+of|the\s+village\s+of|the)\s+/i,
+        ''
+      )
+      .trim()
+    // Drop trailing retrofit/process clauses left in the capture.
+    place = place
+      .replace(
+        /\s+(?:and|,)?\s*(?:how|what|which|where|when|retrofit|insulat|upgrade|improve|considering|planning)\b.*$/i,
+        ''
+      )
+      .trim()
+    if (place.length < 2 || place.length > 60) continue
+    if (GENERIC_PLACE_HINT.test(place)) continue
+    // Avoid capturing long sentence fragments.
+    if (/\b(?:how|what|which|should|could|would|retrofit|organis|organiz)\b/i.test(place)) {
+      continue
+    }
+    if (/^\d+$/.test(place)) continue
+    return place
+  }
+  return null
+}
+
+/**
+ * Expand homeowner questions so KB retrieval prefers consumer journey docs.
+ * @param {string} userQuery
+ * @returns {string}
+ */
+export function enrichPolicySearchQuery(userQuery) {
+  const q = String(userQuery || '').trim()
+  if (!q) return q
+  if (!isHomeownerJourneyQuery(q)) return q
+  const focus =
+    'Search focus: homeowner domestic retrofit steps; fabric first insulation and ventilation; ' +
+    'EPC assessment; TrustMark MCS installers; Boiler Upgrade Scheme; Warm Homes Local Grant; ' +
+    'Energy Company Obligation ECO; energy grants Help to Heat; whole-house retrofit plan PAS 2035.'
+  return [q, '', focus].join('\n')
+}
+
+/**
  * Fast keyword/intent rules that avoid a Bedrock round-trip when confident.
  * Returns null when the question is ambiguous and the LLM router should run.
  *
@@ -1008,8 +1128,11 @@ export function classifyQueryIntentHeuristic(userQuery) {
     return 'out_of_scope'
   }
 
+  // Homeowner journey / how-to is always policy guidance (not out_of_scope).
+  if (isHomeownerJourneyQuery(q)) return 'policy'
+
   const policyHit =
-    /\b(funding|fund(?:s|ing)?|grant(?:s)?|subsid(?:y|ies)|rebate(?:s)?|eligib(?:le|ility)|regulati(?:on|ons)|legislat(?:ion|e)|polic(?:y|ies)|scheme(?:s)?|strateg(?:y|ies)|guidance|standard(?:s)?|obligation(?:s)?|compliance|eco\s*4?\b|green deal|boiler upgrade|bus\b|heat and buildings|pas\s*2035|ofgem|fuel poverty|epbd|heca|warm home(?:s)?|social housing decarbonisation)\b/.test(
+    /\b(funding|fund(?:s|ing)?|grant(?:s)?|subsid(?:y|ies)|rebate(?:s)?|eligib(?:le|ility)|regulati(?:on|ons)|legislat(?:ion|e)|polic(?:y|ies)|scheme(?:s)?|strateg(?:y|ies)|guidance|standard(?:s)?|obligation(?:s)?|compliance|eco\s*4?\b|green deal|boiler upgrade|bus\b|heat and buildings|pas\s*2035|ofgem|fuel poverty|epbd|heca|warm home(?:s)?|social housing decarbonisation|trustmark|\bmcs\b|heat pump|insulation|loft insulation|solid wall|cavity wall|draught|epc\b|energy performance|fabric first|whole[- ]house)\b/.test(
       q
     ) ||
     /\bwhat (?:is|are|does)\b/.test(q) ||
@@ -1035,7 +1158,8 @@ export function classifyQueryIntentHeuristic(userQuery) {
       /\b(funding|fund(?:s|ing)?|grant(?:s)?|subsid|eligib|regulati|legislat|polic(?:y|ies)|scheme|guidance|strateg)/.test(
         q
       ) ||
-      /\bwhat (?:is|are|does)\b/.test(q)
+      /\bwhat (?:is|are|does)\b/.test(q) ||
+      isHomeownerJourneyQuery(q)
     ) {
       return 'policy'
     }
@@ -1063,14 +1187,15 @@ async function classifyQueryIntent(userQuery) {
 
 Labels:
 - directory — questions about organisations in the Retrofit Directory: names, counts, locations/counties, organisation types, activities, specialisms, skills, websites, contacts, who works with whom, employee size bands, or other facts stored about listed organisations.
-- policy — questions about UK retrofit / energy-efficiency / fuel-poverty policy, regulations, strategies, schemes, standards, or technical/policy guidance (e.g. ECO, Green Deal, Heat and Buildings Strategy, HECA, EPBD, Code for Sustainable Homes, Ofgem delivery guidance, committee reports).
-- out_of_scope — anything that is neither a directory organisation lookup nor retrofit policy/guidance (e.g. weather, cooking, general coding, unrelated trivia).
+- policy — questions about UK retrofit / energy-efficiency / fuel-poverty policy, regulations, strategies, schemes, standards, technical/policy guidance, OR practical homeowner guidance on starting or carrying out a domestic retrofit (how to retrofit a home, fabric-first order, ventilation, EPCs, finding TrustMark/MCS installers, which grants or schemes may apply).
+- out_of_scope — only topics that are neither directory lookups nor retrofit guidance (e.g. weather, cooking, sports, general coding, unrelated trivia). Do NOT use out_of_scope for homeowner “how do I retrofit my house” questions.
 
 Disambiguation:
 - Concrete organisation search/count/list/filter questions → directory.
+- “How do I retrofit / start / improve my home” and similar journey questions → policy, even when a place name is included.
 - Questions about rules, eligibility, obligations, government strategy, or what a named policy document says → policy, even if they mention "organisations" in the abstract.
 - If both could apply but the primary ask is organisation data, choose directory.
-- If unsure between directory and policy, prefer directory.
+- If unsure between directory and policy, prefer policy for how-to/homeowner questions and directory for list/count/org-profile questions.
 
 Output ONLY one label with no punctuation or explanation: directory OR policy OR out_of_scope.
 
@@ -1193,11 +1318,108 @@ function sourcesFromKbCitations(response) {
 }
 
 /**
+ * When a policy/homeowner question names a local place, append a short Directory
+ * proximity list so users get both guidance and nearby organisations.
+ * @param {string} userQuery
+ * @param {string} policyAnswer
+ * @returns {Promise<{ answer: string, sqlQuery: string | null, rowCount: number | null }>}
+ */
+async function maybeAppendNearbyOrganisations(userQuery, policyAnswer) {
+  const place = extractPlaceHint(userQuery)
+  if (!place) {
+    return { answer: policyAnswer, sqlQuery: null, rowCount: null }
+  }
+
+  // Prefer homeowner journey questions; also allow grant/how-to policy asks with a place.
+  const shouldAttach =
+    isHomeownerJourneyQuery(userQuery) ||
+    /\b(?:grant|funding|scheme|retrofit|insulat|heat pump|installer)\b/i.test(userQuery)
+  if (!shouldAttach) {
+    return { answer: policyAnswer, sqlQuery: null, rowCount: null }
+  }
+
+  try {
+    // Request only the closest N so the intro count matches the bullets shown.
+    const proximity = await tryAnswerProximityQuery(`organisations near ${place}`, DB_PATH, {
+      limit: HOMEOWNER_NEARBY_ORG_LIMIT,
+      closestOnly: true,
+    })
+    if (!proximity.handled || !proximity.rowCount) {
+      return { answer: policyAnswer, sqlQuery: null, rowCount: null }
+    }
+
+    const answer = [
+      policyAnswer.trim(),
+      '',
+      `### Organisations near ${place}`,
+      '',
+      proximity.answer.trim(),
+    ].join('\n')
+
+    return {
+      answer,
+      sqlQuery: proximity.sqlQuery || null,
+      rowCount: proximity.rowCount,
+    }
+  } catch (error) {
+    logAPICalls(
+      `Nearby organisations append failed for place ${place}: ${error?.message || error}`
+    )
+    return { answer: policyAnswer, sqlQuery: null, rowCount: null }
+  }
+}
+
+/**
+ * True when a KB answer is essentially a short “no relevant documents” refusal,
+ * not a full answer that merely notes a local gap.
+ * @param {string} answer
+ * @returns {boolean}
+ */
+function isPolicyNoHitAnswer(answer) {
+  const text = String(answer || '').trim()
+  if (!text) return true
+  const refusal =
+    /could not find|don't know|do not know|no (relevant |information|context)|not (enough|sufficient) information|unable to (find|answer)|i'm unable|i am unable/i.test(
+      text
+    )
+  if (!refusal) return false
+  // Long staged answers that mention one gap are still successful hits.
+  if (text.length > 500) return false
+  // Multi-bullet guidance is a hit even if one bullet notes missing local detail.
+  const bulletCount = (text.match(/^\s*[-*]\s+/gm) || []).length
+  if (bulletCount >= 3) return false
+  return true
+}
+
+/**
+ * Merge citation lists by name/url identity.
+ * @param {{ name: string, url: string }[]} a
+ * @param {{ name: string, url: string }[]} b
+ * @returns {{ name: string, url: string }[]}
+ */
+function mergeKbSources(a, b) {
+  /** @type {Map<string, { name: string, url: string }>} */
+  const byKey = new Map()
+  for (const list of [a, b]) {
+    for (const source of list || []) {
+      const name = typeof source?.name === 'string' ? source.name.trim() : ''
+      const url = typeof source?.url === 'string' ? source.url.trim() : ''
+      if (!name && !url) continue
+      const key = url || name
+      if (!byKey.has(key)) byKey.set(key, { name: name || url, url })
+    }
+  }
+  return [...byKey.values()]
+}
+
+/**
  * Answer a policy/guidance question via Bedrock Knowledge Base RAG.
  * @param {string} userQuery
+ * @param {{ numberOfResults?: number }} [options]
  * @returns {Promise<{ answer: string, sources: { name: string, url: string }[], noHit: boolean }>}
  */
-async function answerFromKnowledgeBase(userQuery) {
+async function answerFromKnowledgeBase(userQuery, options = {}) {
+  const numberOfResults = Math.min(12, Math.max(3, Number(options.numberOfResults) || 6))
   // Haiku 5.5 requires custom orchestration + generation templates (both with $query$)
   // and rejects temperature. Keep thinking off / low effort for latency and cost.
   const haiku55KbFields = HAIKU_55_MODEL_RE.test(KB_GENERATION_MODEL_ARN)
@@ -1218,7 +1440,7 @@ async function answerFromKnowledgeBase(userQuery) {
           modelArn: KB_GENERATION_MODEL_ARN,
           retrievalConfiguration: {
             vectorSearchConfiguration: {
-              numberOfResults: 6,
+              numberOfResults,
             },
           },
           orchestrationConfiguration: {
@@ -1258,20 +1480,58 @@ async function answerFromKnowledgeBase(userQuery) {
 
   const answer = (response?.output?.text ?? '').trim()
   const sources = sourcesFromKbCitations(response)
-  const soundsLikeNoHit =
-    /could not find|don't know|do not know|no (relevant |information|context)|not (enough|sufficient) information|unable to (find|answer)|i'm unable|i am unable/i.test(
-      answer
-    )
+  const noHit = isPolicyNoHitAnswer(answer)
 
-  if (!answer || soundsLikeNoHit) {
+  if (!answer || noHit) {
     return {
       answer: answer || POLICY_NO_HIT_RESPONSE,
-      sources: soundsLikeNoHit ? sources : [],
+      sources: noHit ? sources : [],
       noHit: true,
     }
   }
 
   return { answer, sources, noHit: false }
+}
+
+/**
+ * Homeowner journey answers: primary RAG plus a funding-focused pass when the
+ * first answer does not already cover national schemes (retrieval often misses
+ * BUS/ECO when the query is place + how-to).
+ * @param {string} userQuery
+ * @returns {Promise<{ answer: string, sources: { name: string, url: string }[], noHit: boolean }>}
+ */
+async function answerHomeownerPolicyQuestion(userQuery) {
+  const primaryQuery = enrichPolicySearchQuery(userQuery)
+  const primary = await answerFromKnowledgeBase(primaryQuery, { numberOfResults: 8 })
+
+  const mentionsFunding =
+    /\b(boiler upgrade|warm homes|help to heat|energy company obligation|\beco(?:\s*4)?\b|grant|funding|scheme)\b/i.test(
+      primary.answer
+    )
+
+  if (primary.noHit || mentionsFunding) {
+    return primary
+  }
+
+  const fundingQuery =
+    'UK homeowner domestic retrofit funding overview: Boiler Upgrade Scheme heat pumps, ' +
+    'Warm Homes Local Grant, Energy Company Obligation ECO, Help to Heat energy grants, eligibility in brief'
+  try {
+    const funding = await answerFromKnowledgeBase(fundingQuery, { numberOfResults: 6 })
+    if (funding.noHit || !funding.answer.trim()) {
+      return primary
+    }
+    return {
+      answer: [primary.answer.trim(), '', '### Funding and schemes', '', funding.answer.trim()].join(
+        '\n'
+      ),
+      sources: mergeKbSources(primary.sources, funding.sources),
+      noHit: false,
+    }
+  } catch (error) {
+    logAPICalls(`Homeowner funding KB pass failed: ${error?.message || error}`)
+    return primary
+  }
 }
 
 app.post('/api/query', async (req, res) =>
@@ -1385,16 +1645,27 @@ app.post('/api/query', async (req, res) =>
       }
 
       if (intent === 'policy') {
-        const { answer, sources, noHit } = await answerFromKnowledgeBase(safeQuery)
-        logEntry.response = answer
+        const homeowner = isHomeownerJourneyQuery(safeQuery)
+        const { answer, sources, noHit } = homeowner
+          ? await answerHomeownerPolicyQuestion(safeQuery)
+          : await answerFromKnowledgeBase(safeQuery)
+        const merged = await maybeAppendNearbyOrganisations(safeQuery, answer)
+        const finalAnswer = merged.answer
+        logEntry.response = finalAnswer
         logEntry.outcome = noHit ? 'kb_no_hit' : 'ok'
+        if (merged.sqlQuery) {
+          logEntry.sqlQuery = merged.sqlQuery
+          logEntry.rowCount = merged.rowCount
+        }
         logAPICalls('Policy KB answer:', {
           safeQuery,
+          homeowner,
           noHit,
           sourceCount: sources.length,
-          answerPreview: answer.slice(0, 240),
+          nearbyOrgs: merged.rowCount,
+          answerPreview: finalAnswer.slice(0, 240),
         })
-        return respondAndLog({ response: answer, sources })
+        return respondAndLog({ response: finalAnswer, sources })
       }
 
       // Directory path: text-to-SQL, then template answer when the shape is simple.

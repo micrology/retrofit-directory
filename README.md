@@ -28,6 +28,7 @@ Node.js query server  (backend/query.mjs, port 5001)
   ├─ proximity intercept (deterministic near/nearest; no LLM)
   ├─ intent: heuristic first, else Bedrock Haiku
   │       → directory | policy | out_of_scope
+  │         (homeowner “how do I retrofit my home?” → policy)
   │
   ├─ directory ── text-to-SQL (canonical orgs_llm schema) ──► SQLite
   │                 └── template answer when shape is simple;
@@ -36,6 +37,8 @@ Node.js query server  (backend/query.mjs, port 5001)
   │
   └─ policy ──── RetrieveAndGenerate ──► Bedrock Knowledge Base
                                          (S3 policy PDFs, eu-west-2)
+                    └── if a local place is named, append nearby
+                        Directory organisations (proximity search)
 ```
 
 | Layer | File / location |

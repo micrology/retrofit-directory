@@ -381,7 +381,15 @@ export async function findOrganisationsNear(dbPath, origin, options = {}) {
  *
  * @param {string} userQuery
  * @param {string} dbPath
- * @param {{ geocode?: typeof geocodePlace }} [deps]
+ * @param {{
+ *   geocode?: typeof geocodePlace,
+ *   limit?: number,
+ *   radiusMiles?: number | null,
+ *   closestOnly?: boolean,
+ * }} [deps]
+ *   `limit` / `radiusMiles` override parsed intent values when set.
+ *   `closestOnly` makes the near-list intro say “closest N …” so a capped
+ *   list is not described as the full count within the radius.
  * @returns {Promise<{
  *   handled: true,
  *   answer: string,
@@ -421,8 +429,17 @@ export async function tryAnswerProximityQuery(userQuery, dbPath, deps = {}) {
   }
 
   const radiusMiles =
-    intent.kind === 'near' ? intent.radiusMiles ?? DEFAULT_NEAR_RADIUS_MILES : null
-  const limit = intent.kind === 'nearest' ? intent.limit : intent.limit
+    deps.radiusMiles !== undefined
+      ? deps.radiusMiles
+      : intent.kind === 'near'
+        ? intent.radiusMiles ?? DEFAULT_NEAR_RADIUS_MILES
+        : null
+  const limit =
+    deps.limit != null
+      ? Math.max(1, Number(deps.limit) || 1)
+      : intent.kind === 'nearest'
+        ? intent.limit
+        : intent.limit
 
   const rows = await findOrganisationsNear(
     dbPath,
@@ -449,6 +466,7 @@ export async function tryAnswerProximityQuery(userQuery, dbPath, deps = {}) {
     radiusMiles,
     typeFilter: intent.typeFilter,
     rows,
+    closestOnly: Boolean(deps.closestOnly) && intent.kind === 'near',
   })
 
   return {
@@ -457,7 +475,7 @@ export async function tryAnswerProximityQuery(userQuery, dbPath, deps = {}) {
     sqlQuery,
     rowCount: rows.length,
     rows,
-    meta: { intent, geo, radiusMiles },
+    meta: { intent, geo, radiusMiles, limit },
   }
 }
 
@@ -482,6 +500,7 @@ export function formatProximityAnswer(opts) {
     radiusMiles,
     typeFilter,
     rows,
+    closestOnly = false,
   } = opts
   const typeLabel = typeFilter?.label || 'organisations'
   // Plain language for end users. Rendered via marked in the chat UI, so use
@@ -519,10 +538,18 @@ export function formatProximityAnswer(opts) {
   const lines = rows.map(
     (r) => `- ${r.org_name}${placeSuffix(r)} — about ${formatMiles(r.distance_miles)}`
   )
-  const header =
-    rows.length === 1
-      ? `There is 1 ${typeFilter ? typeLabel.replace(/s$/, '') : 'organisation'} in the Retrofit Directory within about ${formatMiles(radiusMiles)} of ${placeLabel}:`
-      : `There are ${rows.length} ${typeLabel} in the Retrofit Directory within about ${formatMiles(radiusMiles)} of ${placeLabel}:`
+  const singular = typeFilter ? typeLabel.replace(/s$/, '') : 'organisation'
+  let header
+  if (closestOnly) {
+    header =
+      rows.length === 1
+        ? `The closest ${singular} in the Retrofit Directory within about ${formatMiles(radiusMiles)} of ${placeLabel} is:`
+        : `The closest ${rows.length} ${typeLabel} in the Retrofit Directory within about ${formatMiles(radiusMiles)} of ${placeLabel} are:`
+  } else if (rows.length === 1) {
+    header = `There is 1 ${singular} in the Retrofit Directory within about ${formatMiles(radiusMiles)} of ${placeLabel}:`
+  } else {
+    header = `There are ${rows.length} ${typeLabel} in the Retrofit Directory within about ${formatMiles(radiusMiles)} of ${placeLabel}:`
+  }
   return [header, '', ...lines, '', caveat].join('\n')
 }
 
